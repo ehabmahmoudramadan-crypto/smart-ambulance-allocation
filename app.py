@@ -1,3 +1,4 @@
+
 from flask import Flask, jsonify
 from data import (
     SUPPLY,
@@ -15,7 +16,9 @@ app = Flask(__name__)
 @app.route("/")
 def home():
     if not validate_data():
-        return "Invalid transportation data", 400
+        return jsonify({
+            "error": "Invalid transportation data"
+        }), 400
 
     return jsonify({
         "supply": SUPPLY,
@@ -30,14 +33,17 @@ def home():
 @app.route("/api/data")
 def get_data():
     if not validate_data():
-        return jsonify({"error": "Invalid transportation data"}), 400
+        return jsonify({
+            "error": "Invalid transportation data"
+        }), 400
 
     return jsonify({
         "supply": SUPPLY,
         "demand": DEMAND,
         "cost_matrix": COST_MATRIX,
         "current_allocation": CURRENT_ALLOCATION,
-        "current_cost": calculate_current_cost()
+        "current_cost": calculate_current_cost(),
+        "data_is_synthetic": DATA_IS_SYNTHETIC
     })
 
 
