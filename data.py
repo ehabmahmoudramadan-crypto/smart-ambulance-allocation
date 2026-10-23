@@ -9,16 +9,15 @@ COST_MATRIX = [
 ]
 
 CURRENT_ALLOCATION = [
-    [3, 2, 1, 1, 1],
+    [3, 2, 1, 0, 2],
     [1, 2, 1, 1, 1],
     [0, 1, 2, 2, 2],
     [1, 2, 2, 2, 2]
 ]
 
-CLOSED_ROADS = [("S1", "A2")]         
-WEIGHT_LIMITS = {("S2", "A1"): 2.0}    
-AMBULANCE_WEIGHT = 2.5                 
-BIG_M = 999999                          
+CLOSED_ROADS = [("S1", "A4")]
+ROUTE_CAPACITIES = {("S3", "A5"): 4}
+BIG_M = 999999
 
 DATA_IS_SYNTHETIC = True
 
@@ -33,12 +32,6 @@ def get_constrained_cost_matrix():
         i = stations.index(st)
         j = destinations.index(dest)
         constrained_matrix[i][j] = BIG_M
-        
-    for (st, dest), max_w in WEIGHT_LIMITS.items():
-        if AMBULANCE_WEIGHT > max_w:
-            i = stations.index(st)
-            j = destinations.index(dest)
-            constrained_matrix[i][j] = BIG_M
             
     return constrained_matrix
 
