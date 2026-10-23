@@ -1,1 +1,411 @@
-
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Ambulance Allocation System</title>
+  <meta name="description" content="Ambulance allocation with the Transportation Model (VAM + MODI), plus a multi-agent dispatch simulation.">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+ 
+  <!-- ===================== ICON SPRITE (reused with <use>) ===================== -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+      <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-input" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 9h18M9 9v12" stroke="currentColor" stroke-width="2"/></symbol>
+      <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+      <symbol id="i-sim" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 8l6 4-6 4z" fill="currentColor"/></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+      <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M21 21l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+      <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 17V11a6 6 0 0112 0v6l2 2H4zM10 21h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 22s7-6.5 7-12a7 7 0 10-14 0c0 5.5 7 12 7 12z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="10" r="2.5" fill="currentColor"/></symbol>
+      <symbol id="i-building" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7M5 10v10h14V10M10 20v-5h4v5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+      <symbol id="i-trend" viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8M15 7h6v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8.5 12l2.5 2.5L16 9.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0012 3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <!-- Original ambulance illustration (side view) -->
+      <symbol id="i-ambulance" viewBox="0 0 120 60">
+        <rect x="4" y="12" width="68" height="34" rx="6" fill="#fff"/>
+        <path d="M72 18h20l14 14v14H72z" fill="#fff"/>
+        <path d="M80 22h11l9 10H80z" fill="#9ecbff"/>
+        <rect x="4" y="34" width="102" height="5" fill="#e0314b"/>
+        <rect x="34" y="18" width="16" height="16" rx="2" fill="#e0314b"/>
+        <path d="M40 20h4v4h4v4h-4v4h-4v-4h-4v-4h4z" fill="#fff"/>
+        <rect x="30" y="6" width="20" height="6" rx="3" fill="#ff5a6f"/>
+        <circle cx="26" cy="48" r="8" fill="#1a2438"/><circle cx="26" cy="48" r="3.5" fill="#b9c4d6"/>
+        <circle cx="88" cy="48" r="8" fill="#1a2438"/><circle cx="88" cy="48" r="3.5" fill="#b9c4d6"/>
+      </symbol>
+    </defs>
+  </svg>
+ 
+  <!-- ===================== TOP BAR ===================== -->
+  <header class="topbar">
+    <a class="logo" href="#home" aria-label="Smart Ambulance Allocation System">
+      <svg class="logo-icon" viewBox="0 0 64 44" aria-hidden="true"><path d="M3 18c0-9 11-13 17-5 6-8 17-4 17 5 0 8-10 13-17 19C13 31 3 26 3 18z" fill="#e0314b"/><path d="M8 20h8l3-6 5 11 3-5h10" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><use href="#i-ambulance" x="30" y="14" width="34" height="22"/></svg>
+      <span class="logo-text"><b>Smart Ambulance</b><span>Allocation System</span></span>
+    </a>
+ 
+    <label class="search" for="global-search">
+      <svg class="ico"><use href="#i-search"/></svg>
+      <input id="global-search" type="search" placeholder="Search for a station, area or location…" autocomplete="off">
+    </label>
+ 
+    <div class="topbar-right">
+      <button id="btn-notifications" class="icon-circle" type="button" aria-label="Notifications">
+        <svg class="ico"><use href="#i-bell"/></svg><span id="notif-count" class="badge-dot hidden">0</span>
+      </button>
+      <button id="theme-toggle" class="icon-circle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">🌓</button>
+      <div class="user-chip">
+        <span class="avatar" aria-hidden="true">TM</span>
+        <span class="user-text"><b>Team Member</b><small>Project</small></span>
+      </div>
+    </div>
+  </header>
+ 
+  <div class="shell">
+ 
+    <!-- ===================== SIDEBAR ===================== -->
+    <aside class="sidebar" aria-label="Main navigation">
+      <nav class="side-nav">
+        <a class="side-link active" href="#home"><svg class="ico"><use href="#i-home"/></svg><span>Home</span></a>
+        <a class="side-link" href="#input-section"><svg class="ico"><use href="#i-input"/></svg><span>Data Input</span></a>
+        <a class="side-link" href="#results-section"><svg class="ico"><use href="#i-chart"/></svg><span>Results</span></a>
+        <a class="side-link" href="#simulation-section"><svg class="ico"><use href="#i-sim"/></svg><span>Simulation</span></a>
+        <a class="side-link" href="#reports-section"><svg class="ico"><use href="#i-file"/></svg><span>Reports</span></a>
+        <a class="side-link" href="#settings-section"><svg class="ico"><use href="#i-gear"/></svg><span>Settings</span></a>
+      </nav>
+      <div class="side-promo">
+        <svg class="promo-art" viewBox="0 0 120 60" aria-hidden="true"><use href="#i-ambulance"/></svg>
+        <p><b>Faster Response<br>Safer Communities</b></p>
+        <small>Optimizing ambulance allocation for a better tomorrow.</small>
+      </div>
+    </aside>
+ 
+    <!-- ===================== MAIN ===================== -->
+    <main id="main" class="content">
+ 
+      <div id="data-notice" class="notice" role="note">
+        <strong>Prototype notice:</strong> all data here is <strong>hypothetical</strong>. Costs are abstract cost units, not real travel times, and no GPS or real emergency calls are used.
+      </div>
+      <!-- JS shows server/network errors here -->
+      <div id="global-error" class="error hidden" role="alert"></div>
+ 
+      <!-- ===== Row A: hero + stats ===== -->
+      <section id="home" class="row-a" aria-label="Overview">
+        <div class="hero">
+          <div class="hero-art" aria-hidden="true">
+            <div class="skyline"></div>
+            <svg class="hero-ambulance" viewBox="0 0 120 60"><use href="#i-ambulance"/></svg>
+          </div>
+          <div class="hero-text">
+            <h1>Smart Ambulance<br>Allocation System</h1>
+            <p class="hero-tags"><span>Better Allocation</span><span>Faster Response</span><span>Safer Lives</span></p>
+            <p>Our system uses optimization algorithms (VAM and MODI) to allocate ambulances efficiently across stations and areas, giving the minimum total cost.</p>
+          </div>
+        </div>
+ 
+        <div class="stat-grid">
+          <div class="stat"><span class="stat-icon blue"><svg class="ico"><use href="#i-input"/></svg></span><div><span class="stat-label">Total Ambulances</span><span class="stat-value" id="stat-ambulances">30</span><span class="stat-sub ok-dot">Available: <b id="stat-available">30</b></span></div></div>
+          <div class="stat"><span class="stat-icon purple"><svg class="ico"><use href="#i-pin"/></svg></span><div><span class="stat-label">Service Areas</span><span class="stat-value" id="stat-areas">5</span><span class="stat-sub purple-dot">Demand points</span></div></div>
+          <div class="stat"><span class="stat-icon orange"><svg class="ico"><use href="#i-building"/></svg></span><div><span class="stat-label">Stations</span><span class="stat-value" id="stat-stations">4</span><span class="stat-sub orange-dot">Supply points</span></div></div>
+          <div class="stat"><span class="stat-icon green"><svg class="ico"><use href="#i-trend"/></svg></span><div><span class="stat-label">Saving vs current plan</span><span class="stat-value"><span id="stat-saving">—</span></span><span class="stat-sub ok-text" id="stat-saving-sub">Solve to compute</span></div></div>
+        </div>
+      </section>
+ 
+      <!-- ===== Row B: input | results | map + simulation ===== -->
+      <div class="row-b">
+ 
+        <!-- ---- Input ---- -->
+        <section id="input-section" class="card panel-input" aria-labelledby="h-input">
+          <div class="card-title">
+            <svg class="ico t-ico"><use href="#i-input"/></svg><h2 id="h-input">Input Data</h2>
+            <span id="data-source" class="pill">Default data</span>
+          </div>
+ 
+          <div class="seg" role="group" aria-label="Data source">
+            <button type="button" id="tab-manual" class="seg-btn active" aria-pressed="true">Manual Input</button>
+            <button type="button" id="btn-load-sample" class="seg-btn" aria-pressed="false">Load Sample</button>
+          </div>
+ 
+          <h3>Supply <small>(Stations)</small></h3>
+          <div class="table-scroll">
+            <table class="data-table row-table" id="supply-table">
+              <thead><tr><th scope="col" class="station-label">S1</th><th scope="col" class="station-label">S2</th><th scope="col" class="station-label">S3</th><th scope="col" class="station-label">S4</th><th scope="col">Total</th></tr></thead>
+              <tbody><tr>
+                <td><input type="number" min="0" step="1" inputmode="numeric" id="supply-S1" value="8" aria-label="Supply of S1"></td>
+                <td><input type="number" min="0" step="1" inputmode="numeric" id="supply-S2" value="6" aria-label="Supply of S2"></td>
+                <td><input type="number" min="0" step="1" inputmode="numeric" id="supply-S3" value="7" aria-label="Supply of S3"></td>
+                <td><input type="number" min="0" step="1" inputmode="numeric" id="supply-S4" value="9" aria-label="Supply of S4"></td>
+                <td class="total-cell" id="total-supply">30</td>
+              </tr></tbody>
+            </table>
+          </div>
+ 
+          <h3>Demand <small>(Areas)</small></h3>
+          <div class="table-scroll">
+            <table class="data-table row-table" id="demand-table">
+              <thead><tr><th scope="col" class="area-label">A1</th><th scope="col" class="area-label">A2</th><th scope="col" class="area-label">A3</th><th scope="col" class="area-label">A4</th><th scope="col" class="area-label">A5</th><th scope="col">Total</th></tr></thead>
+              <tbody><tr>
+                <td><input type="number" min="0" step="1" inputmode="numeric" id="demand-A1" value="5" aria-label="Demand of A1"></td>
+                <td><input type="number" min="0" step="1" inputmode="numeric" id="demand-A2" value="7" aria-label="Demand of A2"></td>
+                <td><input type="number" min="0" step="1" inputmode="numeric" id="demand-A3" value="6" aria-label="Demand of A3"></td>
+                <td><input type="number" min="0" step="1" inputmode="numeric" id="demand-A4" value="6" aria-label="Demand of A4"></td>
+                <td><input type="number" min="0" step="1" inputmode="numeric" id="demand-A5" value="6" aria-label="Demand of A5"></td>
+                <td class="total-cell" id="total-demand">30</td>
+              </tr></tbody>
+            </table>
+          </div>
+ 
+          <div id="balance-status" class="balance ok" role="status">✔ Balanced: total supply = total demand = 30 ambulances.</div>
+ 
+          <h3>Cost Matrix <small>(abstract cost units)</small></h3>
+          <div class="table-scroll">
+            <table class="data-table matrix" id="cost-table">
+              <thead><tr>
+                <th scope="col" class="corner">Station \ Area</th>
+                <th scope="col" class="area-label">A1</th><th scope="col" class="area-label">A2</th><th scope="col" class="area-label">A3</th><th scope="col" class="area-label">A4</th><th scope="col" class="area-label">A5</th>
+              </tr></thead>
+              <tbody>
+                <tr>
+                  <th scope="row" class="station-label">S1</th>
+                  <td><input type="number" min="0" step="any" id="cost-S1-A1" value="24" aria-label="Cost S1 to A1"></td>
+                  <td><input type="number" min="0" step="any" id="cost-S1-A2" value="45" aria-label="Cost S1 to A2"></td>
+                  <td><input type="number" min="0" step="any" id="cost-S1-A3" value="37" aria-label="Cost S1 to A3"></td>
+                  <td><input type="number" min="0" step="any" id="cost-S1-A4" value="18" aria-label="Cost S1 to A4"></td>
+                  <td><input type="number" min="0" step="any" id="cost-S1-A5" value="19" aria-label="Cost S1 to A5"></td>
+                </tr>
+                <tr>
+                  <th scope="row" class="station-label">S2</th>
+                  <td><input type="number" min="0" step="any" id="cost-S2-A1" value="28" aria-label="Cost S2 to A1"></td>
+                  <td><input type="number" min="0" step="any" id="cost-S2-A2" value="36" aria-label="Cost S2 to A2"></td>
+                  <td><input type="number" min="0" step="any" id="cost-S2-A3" value="37" aria-label="Cost S2 to A3"></td>
+                  <td><input type="number" min="0" step="any" id="cost-S2-A4" value="13" aria-label="Cost S2 to A4"></td>
+                  <td><input type="number" min="0" step="any" id="cost-S2-A5" value="23" aria-label="Cost S2 to A5"></td>
+                </tr>
+                <tr>
+                  <th scope="row" class="station-label">S3</th>
+                  <td><input type="number" min="0" step="any" id="cost-S3-A1" value="45" aria-label="Cost S3 to A1"></td>
+                  <td><input type="number" min="0" step="any" id="cost-S3-A2" value="39" aria-label="Cost S3 to A2"></td>
+                  <td><input type="number" min="0" step="any" id="cost-S3-A3" value="31" aria-label="Cost S3 to A3"></td>
+                  <td><input type="number" min="0" step="any" id="cost-S3-A4" value="42" aria-label="Cost S3 to A4"></td>
+                  <td><input type="number" min="0" step="any" id="cost-S3-A5" value="15" aria-label="Cost S3 to A5"></td>
+                </tr>
+                <tr>
+                  <th scope="row" class="station-label">S4</th>
+                  <td><input type="number" min="0" step="any" id="cost-S4-A1" value="26" aria-label="Cost S4 to A1"></td>
+                  <td><input type="number" min="0" step="any" id="cost-S4-A2" value="42" aria-label="Cost S4 to A2"></td>
+                  <td><input type="number" min="0" step="any" id="cost-S4-A3" value="19" aria-label="Cost S4 to A3"></td>
+                  <td><input type="number" min="0" step="any" id="cost-S4-A4" value="19" aria-label="Cost S4 to A4"></td>
+                  <td><input type="number" min="0" step="any" id="cost-S4-A5" value="18" aria-label="Cost S4 to A5"></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+ 
+          <div id="input-error" class="error hidden" role="alert"></div>
+ 
+          <button type="button" id="btn-solve" class="btn btn-block btn-primary">▶ Run Optimization</button>
+          <div class="btn-row">
+            <button type="button" id="btn-reset-data" class="btn btn-link">Reset to default data</button>
+            <span id="loading" class="spinner-label hidden" role="status"><i class="spinner" aria-hidden="true"></i> Solving…</span>
+          </div>
+        </section>
+ 
+        <!-- ---- Results ---- -->
+        <section id="results-section" class="card panel-results" aria-labelledby="h-results">
+          <h2 id="h-results" class="sr-only">Allocation results</h2>
+ 
+          <!-- CSS-only tabs: radios first, then labels, then panes -->
+          <input class="tab-radio" type="radio" name="result-tab" id="rt-vam" checked>
+          <input class="tab-radio" type="radio" name="result-tab" id="rt-modi">
+          <input class="tab-radio" type="radio" name="result-tab" id="rt-current">
+          <div class="tabs" role="tablist">
+            <label for="rt-vam" class="tab" role="tab">VAM <small>(Initial Solution)</small></label>
+            <label for="rt-modi" class="tab" role="tab">MODI <small>(Optimal Solution)</small></label>
+            <label for="rt-current" class="tab" role="tab">Current <small>(Baseline)</small></label>
+            <span id="solve-meta" class="pill hidden">—</span>
+          </div>
+ 
+          <div class="cost-cards">
+            <div class="cost-card blue"><span class="cc-label">Initial Cost (VAM)</span><span class="cc-value" id="vam-cost">—</span><span class="cc-sub">cost units</span></div>
+            <div class="cost-card green"><span class="cc-label">Optimal Cost (MODI)</span><span class="cc-value" id="modi-cost">—</span><span class="cc-sub">cost units</span><span class="chip" id="modi-improvement">—</span></div>
+          </div>
+ 
+          <p id="results-placeholder" class="muted pad">Press <b>Run Optimization</b> to see the allocation matrix, the comparison with the current plan and every calculation step.</p>
+ 
+          <div id="results-content" class="hidden">
+            <h3>Allocation Matrix</h3>
+            <div class="pane pane-vam table-scroll" id="vam-result"></div>
+            <div class="pane pane-modi table-scroll" id="modi-result"></div>
+            <div class="pane pane-current table-scroll" id="current-result"></div>
+ 
+            <div class="mini-kpis">
+              <div><span class="kpi-label">Current plan cost</span><b id="current-cost">—</b></div>
+              <div><span class="kpi-label">MODI iterations</span><b id="modi-iterations">—</b></div>
+              <div><span class="kpi-label">Optimality</span><b id="optimality-status">—</b></div>
+              <div><span class="kpi-label">Saving vs current</span><b class="ok-text" id="saving">—</b> <small id="saving-percent">—</small></div>
+            </div>
+ 
+            <div class="insights">
+              <h3><svg class="ico t-ico"><use href="#i-bulb"/></svg> Key Insights</h3>
+              <!-- JS adds: <li class="ok|warn"><svg class="ico"><use href="#i-check"/></svg><span>text</span></li> -->
+              <ul id="insights-list" class="insight-list"></ul>
+              <ul id="result-warnings" class="notice-list hidden"></ul>
+            </div>
+ 
+            <details class="details">
+              <summary>What changes from the current plan</summary>
+              <div class="table-scroll" id="changes-table"></div>
+            </details>
+            <details class="details">
+              <summary>Cost verification (quantity × cost)</summary>
+              <div id="cost-breakdown" class="breakdown"></div>
+            </details>
+            <details class="details">
+              <summary>VAM step by step</summary>
+              <div class="table-scroll" id="vam-steps"></div>
+            </details>
+            <details class="details">
+              <summary>MODI potentials u, v and reduced costs Δ</summary>
+              <p class="hint">Δ<sub>ij</sub> = c<sub>ij</sub> − (u<sub>i</sub> + v<sub>j</sub>). A plan is optimal when every Δ ≥ 0.</p>
+              <div class="table-scroll" id="modi-details"></div>
+            </details>
+          </div>
+        </section>
+ 
+        <!-- ---- Map + simulation ---- -->
+        <div class="col-right">
+          <section class="card panel-map" aria-labelledby="h-map">
+            <div class="card-title">
+              <svg class="ico t-ico"><use href="#i-pin"/></svg><h2 id="h-map">Allocation Map</h2>
+              <span class="legend-inline"><i class="dot station"></i>Station <i class="dot area"></i>Area <i class="dot amb"></i>Ambulance</span>
+            </div>
+            <!-- Default schematic. JS can replace the content of #map-container with a live SVG -->
+            <div id="map-container" class="map-box">
+              <svg viewBox="0 0 400 230" role="img" aria-label="Schematic of stations and service areas (positions are not real)">
+                <defs><pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M20 0H0V20" fill="none" stroke="currentColor" stroke-opacity=".08"/></pattern></defs>
+                <rect width="400" height="230" fill="url(#grid)"/>
+                <path d="M0 150C80 120 140 190 230 160S340 110 400 130" fill="none" stroke="#7fb4ff" stroke-opacity=".35" stroke-width="16"/>
+                <g class="m-st"><rect x="40" y="30" width="46" height="22" rx="6"/><text x="63" y="45">S1</text>
+                  <rect x="40" y="75" width="46" height="22" rx="6"/><text x="63" y="90">S2</text>
+                  <rect x="40" y="120" width="46" height="22" rx="6"/><text x="63" y="135">S3</text>
+                  <rect x="40" y="165" width="46" height="22" rx="6"/><text x="63" y="180">S4</text></g>
+                <g class="m-ar"><circle cx="330" cy="30" r="13"/><text x="330" y="34">A1</text>
+                  <circle cx="330" cy="72" r="13"/><text x="330" y="76">A2</text>
+                  <circle cx="330" cy="114" r="13"/><text x="330" y="118">A3</text>
+                  <circle cx="330" cy="156" r="13"/><text x="330" y="160">A4</text>
+                  <circle cx="330" cy="198" r="13"/><text x="330" y="202">A5</text></g>
+              </svg>
+              <p class="map-note">Schematic only. Positions are hypothetical.</p>
+            </div>
+          </section>
+ 
+          <section id="simulation-section" class="card panel-sim" aria-labelledby="h-sim">
+            <div class="card-title">
+              <svg class="ico t-ico"><use href="#i-sim"/></svg><h2 id="h-sim">Simulation</h2>
+              <span id="sim-status" class="pill">Ready</span>
+            </div>
+ 
+            <div class="sim-controls">
+              <label>Scenario
+                <select id="sim-scenario">
+                  <option value="normal">Normal load</option>
+                  <option value="high-demand">High demand</option>
+                  <option value="station-failure">Station failure</option>
+                </select>
+              </label>
+              <label>Policy
+                <select id="sim-policy">
+                  <option value="dynamic">Dynamic</option>
+                  <option value="static">Static (MODI plan)</option>
+                </select>
+              </label>
+            </div>
+            <label class="speed">Simulation Speed
+              <span class="speed-row"><input type="range" id="sim-speed" min="1" max="10" value="1" step="1"><b id="sim-speed-label">1x</b></span>
+            </label>
+            <div class="btn-grid">
+              <button type="button" id="btn-sim-start" class="btn btn-go">▶ Start</button>
+              <button type="button" id="btn-sim-pause" class="btn btn-secondary">⏸ Pause</button>
+              <button type="button" id="btn-sim-reset" class="btn btn-secondary">↺ Reset</button>
+            </div>
+            <p class="clock">Virtual time <b id="sim-clock">00:00</b></p>
+            <p id="sim-message" class="error hidden" role="alert"></p>
+ 
+            <div class="live">
+              <h3><i class="dot red"></i> Live Events</h3>
+              <!-- JS adds: <li class="ev-CallArrives"><span class="t"></span><span class="ty"></span><span class="tx"></span></li> -->
+              <ul id="event-timeline" class="timeline"><li class="muted">No events yet.</li></ul>
+            </div>
+          </section>
+        </div>
+      </div>
+ 
+      <!-- ===== Row C: ambulance board + comparison ===== -->
+      <div class="row-c">
+        <section class="card" aria-labelledby="h-board">
+          <div class="card-title"><svg class="ico t-ico"><use href="#i-ambulance"/></svg><h2 id="h-board">Ambulance Status Board</h2></div>
+          <div class="legend" aria-label="Ambulance status legend">
+            <span class="badge status-available">Available</span>
+            <span class="badge status-dispatched">Dispatched</span>
+            <span class="badge status-busy">Busy</span>
+            <span class="badge status-returning">Returning</span>
+            <span class="badge status-out">Out of service</span>
+          </div>
+          <!-- JS adds: <div class="ambulance-card status-available">…</div> -->
+          <div id="ambulance-board" class="ambulance-board"><p class="muted">The simulation has not started yet.</p></div>
+        </section>
+        <section class="card" aria-labelledby="h-compare">
+          <div class="card-title"><svg class="ico t-ico"><use href="#i-chart"/></svg><h2 id="h-compare">Static vs Dynamic Policy</h2></div>
+          <div id="chart-container" class="placeholder-box">The comparison chart appears here after the simulation runs.</div>
+        </section>
+      </div>
+ 
+      <!-- ===== Row D: details cards ===== -->
+      <div id="reports-section" class="row-d">
+        <section class="card" aria-labelledby="h-algo">
+          <div class="card-title"><svg class="ico t-ico"><use href="#i-gear"/></svg><h2 id="h-algo">Algorithm Details</h2></div>
+          <dl class="algo">
+            <div><dt>VAM</dt><dd><b>Vogel's Approximation Method</b><span>Initial solution with cost <b id="algo-vam-cost">—</b></span></dd></div>
+            <div><dt>MODI</dt><dd><b>Modified Distribution Method</b><span>Optimal solution with cost <b id="algo-modi-cost">—</b></span></dd></div>
+          </dl>
+        </section>
+ 
+        <section class="card" aria-labelledby="h-perf">
+          <div class="card-title"><svg class="ico t-ico"><use href="#i-chart"/></svg><h2 id="h-perf">Performance Metrics</h2></div>
+          <ul class="metric-list">
+            <li><span>Average Response Time (simulated)</span><b id="kpi-response">—</b></li>
+            <li><span>Calls served in time</span><b id="kpi-served">—</b></li>
+            <li><span>Calls waiting</span><b id="kpi-waiting">—</b></li>
+            <li><span>Ambulance Utilization</span><b id="kpi-utilization">—</b></li>
+            <li><span>Total Cost Reduction</span><b class="ok-text" id="kpi-cost-reduction">—</b></li>
+          </ul>
+        </section>
+ 
+        <section id="settings-section" class="card" aria-labelledby="h-status">
+          <div class="card-title"><svg class="ico t-ico"><use href="#i-shield"/></svg><h2 id="h-status">System Status</h2></div>
+          <ul class="status-list">
+            <li><i class="dot grey" id="status-api-dot"></i><span>Backend API</span><b id="status-api">Checking…</b></li>
+            <li><i class="dot grey" id="status-opt-dot"></i><span>Optimization Engine</span><b id="status-opt">Checking…</b></li>
+            <li><i class="dot grey" id="status-sim-dot"></i><span>Simulation Engine</span><b id="status-sim">Not started</b></li>
+            <li><i class="dot grey" id="status-ui-dot"></i><span>Frontend Interface</span><b id="status-ui">Loaded</b></li>
+          </ul>
+        </section>
+ 
+        <section class="card quote" aria-label="Project note">
+          <p>“Smarter allocation today, healthier communities tomorrow.”</p>
+          <svg viewBox="0 0 160 50" class="pulse" aria-hidden="true"><path d="M0 28h45l8-22 12 40 10-30 8 12h77" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </section>
+      </div>
+ 
+      <footer class="site-footer">Smart Ambulance Allocation System · academic prototype with hypothetical data</footer>
+    </main>
+  </div>
+ 
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
