@@ -1,5 +1,29 @@
 from collections import deque
-from typing import Dict, Any
+from typing import Dict, Any, List
+
+CLOSED_ROADS = [("S1", "A2")]
+WEIGHT_LIMITS = {("S2", "A1"): 2.0}
+AMBULANCE_WEIGHT = 2.5
+BIG_M = 999999
+
+
+def get_constrained_cost_matrix(cost_matrix: List[List[float]]) -> List[List[float]]:
+    stations = ["S1", "S2", "S3", "S4"]
+    destinations = ["A1", "A2", "A3", "A4", "A5"]
+    constrained_matrix = [row[:] for row in cost_matrix]
+    
+    for st, dest in CLOSED_ROADS:
+        i = stations.index(st)
+        j = destinations.index(dest)
+        constrained_matrix[i][j] = BIG_M
+        
+    for (st, dest), max_w in WEIGHT_LIMITS.items():
+        if AMBULANCE_WEIGHT > max_w:
+            i = stations.index(st)
+            j = destinations.index(dest)
+            constrained_matrix[i][j] = BIG_M
+            
+    return constrained_matrix
 
 
 def _validate(supply, demand, cost_matrix, allocation):
@@ -47,10 +71,11 @@ def _find_cycle(basis, start, m, n):
 
 
 def modi_optimize(supply, demand, cost_matrix, initial_allocation, max_iterations=1000) -> Dict[str, Any]:
-    _validate(supply, demand, cost_matrix, initial_allocation)
+    constrained_costs = get_constrained_cost_matrix(cost_matrix)
+    _validate(supply, demand, constrained_costs, initial_allocation)
     m, n = len(supply), len(demand)
     x = [list(map(float, row)) for row in initial_allocation]
-    costs = [list(map(float, row)) for row in cost_matrix]
+    costs = [list(map(float, row)) for row in constrained_costs]
     basis = {(i, j) for i in range(m) for j in range(n) if x[i][j] > 0}
 
     parent = list(range(m + n))
