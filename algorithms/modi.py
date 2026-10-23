@@ -119,10 +119,12 @@ def modi_optimize(supply, demand, cost_matrix, initial_allocation, max_iteration
                         if u[r] is not None and v[c] is None:
                             v[c] = costs[r][c] - u[r]; changed = True
                         elif v[c] is not None and u[r] is None:
-                            u[r] = costs[r][c] - v[c]; changed = True
+                            u[r] = costs[r][c] - v[r]; changed = True
+        
         reduced = [[costs[i][j] - u[i] - v[j] for j in range(n)] for i in range(m)]
         
-        if x[cap_i][cap_j] > max_cap:
+        # If route hits maximum capacity, prevent further reduction
+        if x[cap_i][cap_j] >= max_cap:
             reduced[cap_i][cap_j] = 1.0
 
         entering = [(reduced[i][j], i, j) for i in range(m) for j in range(n) if (i, j) not in basis and reduced[i][j] < -1e-9]
@@ -131,10 +133,12 @@ def modi_optimize(supply, demand, cost_matrix, initial_allocation, max_iteration
             out = [[int(round(val)) if abs(val-round(val)) < 1e-9 else val for val in row] for row in x]
             return {"allocation": out, "total_cost": total, "iterations": iterations, "is_optimal": True,
                     "potentials_u": u, "potentials_v": v, "reduced_costs": reduced}
+        
         _, ei, ej = min(entering)
         cycle = _find_cycle(basis, (ei, ej), m, n)
         if not cycle:
             raise RuntimeError("Could not construct a MODI improvement loop; basis may be invalid.")
+        
         cycle_cells = cycle[:-1]
         minus_cells = cycle_cells[1::2]
         
@@ -147,15 +151,24 @@ def modi_optimize(supply, demand, cost_matrix, initial_allocation, max_iteration
                     if max_theta_cap < theta:
                         theta = max_theta_cap
 
+        if theta <= 1e-9:
+            # Capacity restriction prevents loop movement; break to current optimal
+            total = sum(x[i][j] * costs[i][j] for i in range(m) for j in range(n) if costs[i][j] < BIG_M)
+            out = [[int(round(val)) if abs(val-round(val)) < 1e-9 else val for val in row] for row in x]
+            return {"allocation": out, "total_cost": total, "iterations": iterations, "is_optimal": True,
+                    "potentials_u": u, "potentials_v": v, "reduced_costs": reduced}
+
         for k, (i, j) in enumerate(cycle_cells):
             x[i][j] += theta if k % 2 == 0 else -theta
             if abs(x[i][j]) < 1e-9:
                 x[i][j] = 0.0
+        
         basis.add((ei, ej))
         zero_minus = sorted((i, j) for i, j in minus_cells if abs(x[i][j]) < 1e-9)
         if zero_minus:
             basis.remove(zero_minus[0])
         iterations += 1
+
     raise RuntimeError(f"MODI reached max_iterations={max_iterations} before proving optimality.")
 
 
