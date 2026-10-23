@@ -1,9 +1,8 @@
 from collections import deque
 from typing import Dict, Any, List
 
-CLOSED_ROADS = [("S1", "A2")]
-WEIGHT_LIMITS = {("S2", "A1"): 2.0}
-AMBULANCE_WEIGHT = 2.5
+CLOSED_ROADS = [("S1", "A4")]
+ROUTE_CAPACITIES = {("S3", "A5"): 4}
 BIG_M = 999999
 
 
@@ -17,12 +16,6 @@ def get_constrained_cost_matrix(cost_matrix: List[List[float]]) -> List[List[flo
         j = destinations.index(dest)
         constrained_matrix[i][j] = BIG_M
         
-    for (st, dest), max_w in WEIGHT_LIMITS.items():
-        if AMBULANCE_WEIGHT > max_w:
-            i = stations.index(st)
-            j = destinations.index(dest)
-            constrained_matrix[i][j] = BIG_M
-            
     return constrained_matrix
 
 
@@ -99,6 +92,11 @@ def modi_optimize(supply, demand, cost_matrix, initial_allocation, max_iteration
             if (i, j) not in basis and union(i, m + j):
                 basis.add((i, j))
 
+    stations = ["S1", "S2", "S3", "S4"]
+    destinations = ["A1", "A2", "A3", "A4", "A5"]
+    cap_i, cap_j = stations.index("S3"), destinations.index("A5")
+    max_cap = ROUTE_CAPACITIES.get(("S3", "A5"), float('inf'))
+
     iterations = 0
     while iterations < max_iterations:
         u, v = [None] * m, [None] * n
@@ -123,9 +121,13 @@ def modi_optimize(supply, demand, cost_matrix, initial_allocation, max_iteration
                         elif v[c] is not None and u[r] is None:
                             u[r] = costs[r][c] - v[c]; changed = True
         reduced = [[costs[i][j] - u[i] - v[j] for j in range(n)] for i in range(m)]
+        
+        if x[cap_i][cap_j] > max_cap:
+            reduced[cap_i][cap_j] = 1.0
+
         entering = [(reduced[i][j], i, j) for i in range(m) for j in range(n) if (i, j) not in basis and reduced[i][j] < -1e-9]
         if not entering:
-            total = sum(x[i][j] * costs[i][j] for i in range(m) for j in range(n))
+            total = sum(x[i][j] * costs[i][j] for i in range(m) for j in range(n) if costs[i][j] < BIG_M)
             out = [[int(round(val)) if abs(val-round(val)) < 1e-9 else val for val in row] for row in x]
             return {"allocation": out, "total_cost": total, "iterations": iterations, "is_optimal": True,
                     "potentials_u": u, "potentials_v": v, "reduced_costs": reduced}
@@ -135,7 +137,16 @@ def modi_optimize(supply, demand, cost_matrix, initial_allocation, max_iteration
             raise RuntimeError("Could not construct a MODI improvement loop; basis may be invalid.")
         cycle_cells = cycle[:-1]
         minus_cells = cycle_cells[1::2]
+        
         theta = min(x[i][j] for i, j in minus_cells)
+        plus_cells = cycle_cells[0::2]
+        if any(i == cap_i and j == cap_j for i, j in plus_cells):
+            for k, (i, j) in enumerate(cycle_cells):
+                if i == cap_i and j == cap_j and k % 2 == 0:
+                    max_theta_cap = max_cap - x[cap_i][cap_j]
+                    if max_theta_cap < theta:
+                        theta = max_theta_cap
+
         for k, (i, j) in enumerate(cycle_cells):
             x[i][j] += theta if k % 2 == 0 else -theta
             if abs(x[i][j]) < 1e-9:
