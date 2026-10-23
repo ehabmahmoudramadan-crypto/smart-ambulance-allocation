@@ -124,4 +124,5 @@ def modi_optimize(supply, demand, cost_matrix, initial_allocation, max_iteration
 
 
 def solve_modi(supply, demand, cost_matrix, initial_allocation):
-    result = modi_
+    result = modi_optimize(supply, demand, cost_matrix, initial_allocation)
+    return result["allocation"], result["total_cost"]
