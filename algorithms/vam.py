@@ -1,5 +1,28 @@
-"""Vogel's Approximation Method (VAM) for an initial transportation solution."""
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
+
+CLOSED_ROADS = [("S1", "A2")]
+WEIGHT_LIMITS = {("S2", "A1"): 2.0}
+AMBULANCE_WEIGHT = 2.5
+BIG_M = 999999
+
+
+def get_constrained_cost_matrix(cost_matrix: List[List[float]]) -> List[List[float]]:
+    stations = ["S1", "S2", "S3", "S4"]
+    destinations = ["A1", "A2", "A3", "A4", "A5"]
+    constrained_matrix = [row[:] for row in cost_matrix]
+    
+    for st, dest in CLOSED_ROADS:
+        i = stations.index(st)
+        j = destinations.index(dest)
+        constrained_matrix[i][j] = BIG_M
+        
+    for (st, dest), max_w in WEIGHT_LIMITS.items():
+        if AMBULANCE_WEIGHT > max_w:
+            i = stations.index(st)
+            j = destinations.index(dest)
+            constrained_matrix[i][j] = BIG_M
+            
+    return constrained_matrix
 
 
 def _validate(supply, demand, cost_matrix):
@@ -15,15 +38,11 @@ def _validate(supply, demand, cost_matrix):
 
 
 def vogel_approximation(supply, demand, cost_matrix) -> Dict[str, Any]:
-    """Return {'allocation': matrix, 'total_cost': number, 'steps': [...]}.
-
-    This implementation expects a balanced problem. Ties are resolved
-    deterministically by choosing the lowest-index eligible row/column.
-    """
-    _validate(supply, demand, cost_matrix)
+    constrained_costs = get_constrained_cost_matrix(cost_matrix)
+    _validate(supply, demand, constrained_costs)
     supply_left = list(supply)
     demand_left = list(demand)
-    costs = [list(row) for row in cost_matrix]
+    costs = [list(row) for row in constrained_costs]
     m, n = len(supply_left), len(demand_left)
     allocation = [[0 for _ in range(n)] for _ in range(m)]
     active_rows = {i for i, value in enumerate(supply_left) if value > 0}
@@ -59,7 +78,34 @@ def vogel_approximation(supply, demand, cost_matrix) -> Dict[str, Any]:
     return {"allocation": allocation, "total_cost": total_cost, "steps": steps}
 
 
-# Friendly alias for integration with existing naming conventions.
 def solve_vam(supply, demand, cost_matrix):
     result = vogel_approximation(supply, demand, cost_matrix)
     return result["allocation"], result["total_cost"]
+
+
+if __name__ == "__main__":
+    SUPPLY = [8, 6, 7, 9]
+    DEMAND = [5, 7, 6, 6, 6]
+    
+    COST_MATRIX = [
+        [24, 45, 37, 18, 19],
+        [28, 36, 37, 13, 23],
+        [45, 39, 31, 42, 15],
+        [26, 42, 19, 19, 18]
+    ]
+
+    allocation, total_cost = solve_vam(SUPPLY, DEMAND, COST_MATRIX)
+    
+    print("Constrained Cost Matrix:")
+    for row in get_constrained_cost_matrix(COST_MATRIX):
+        print(row)
+        
+    print("\nOptimal Allocation:")
+    stations = ["S1", "S2", "S3", "S4"]
+    destinations = ["A1", "A2", "A3", "A4", "A5"]
+    
+    print(f"{'':<6}" + "".join([f"{d:>6}" for d in destinations]))
+    for idx, row in enumerate(allocation):
+        print(f"{stations[idx]:<6}" + "".join([f"{val:>6}" for val in row]))
+        
+    print(f"\nTotal Cost: {total_cost}")
