@@ -1,4 +1,3 @@
-
 SUPPLY = [8, 6, 7, 9]
 DEMAND = [5, 7, 6, 6, 6]
 
@@ -16,7 +15,37 @@ CURRENT_ALLOCATION = [
     [1, 2, 2, 2, 2]
 ]
 
+# --- إضافات القيود التشغيلية الجديدة (2 Constraints) ---
+CLOSED_ROADS = [("S1", "A2")]          # 1. الطرق المغلقة كلياً
+WEIGHT_LIMITS = {("S2", "A1"): 2.0}    # 2. قيود أقصى وزن للمسارات (بالأطنان)
+AMBULANCE_WEIGHT = 2.5                 # وزن سيارة الإسعاف القياسية
+BIG_M = 999999                         # تكلفة عقوبة لا نهائية للمسارات الممنوعة
+
 DATA_IS_SYNTHETIC = True
+
+
+def get_constrained_cost_matrix():
+    """تعديل مصفوفة التكاليف بناءً على القيود باستخدام طريقة Big-M"""
+    stations = ["S1", "S2", "S3", "S4"]
+    destinations = ["A1", "A2", "A3", "A4", "A5"]
+    
+    # نسخ مصفوفة التكاليف الأصلية
+    constrained_matrix = [row[:] for row in COST_MATRIX]
+    
+    # تطبيق قيد الطرق المغلقة
+    for st, dest in CLOSED_ROADS:
+        i = stations.index(st)
+        j = destinations.index(dest)
+        constrained_matrix[i][j] = BIG_M
+        
+    # تطبيق قيد الأوزان
+    for (st, dest), max_w in WEIGHT_LIMITS.items():
+        if AMBULANCE_WEIGHT > max_w:
+            i = stations.index(st)
+            j = destinations.index(dest)
+            constrained_matrix[i][j] = BIG_M
+            
+    return constrained_matrix
 
 
 def validate_data():
@@ -84,12 +113,14 @@ def calculate_current_cost():
     if not validate_data():
         raise ValueError("Invalid transportation data")
 
+    # استخدام مصفوفة التكاليف المعدلة بالقيود (Big-M)
+    constrained_matrix = get_constrained_cost_matrix()
     total = 0
 
     for i in range(len(SUPPLY)):
         for j in range(len(DEMAND)):
             total += (
-                CURRENT_ALLOCATION[i][j] * COST_MATRIX[i][j]
+                CURRENT_ALLOCATION[i][j] * constrained_matrix[i][j]
             )
 
     return total
