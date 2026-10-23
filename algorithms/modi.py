@@ -1,4 +1,3 @@
-"""MODI (u-v) transportation optimizer with degeneracy handling."""
 from collections import deque
 from typing import Dict, Any
 
@@ -24,7 +23,6 @@ def _validate(supply, demand, cost_matrix, allocation):
 
 
 def _find_cycle(basis, start, m, n):
-    """Find a rectangular +/- cycle through start and basis cells."""
     cells = set(basis)
     cells.add(start)
     row_cells = {i: [c for c in cells if c[0] == i] for i in range(m)}
@@ -45,23 +43,16 @@ def _find_cycle(basis, start, m, n):
                 return found
         return None
 
-    # Start horizontally, then vertically; cycle alternates row/column moves.
     return dfs(start, True, [start]) or dfs(start, False, [start])
 
 
 def modi_optimize(supply, demand, cost_matrix, initial_allocation, max_iterations=1000) -> Dict[str, Any]:
-    """Optimize allocation; returns allocation, total_cost, iterations, is_optimal, potentials, reduced_costs.
-
-    Zero allocations are added to the basis as epsilon cells when needed.
-    For this project's small matrices, cycle search is exhaustive and deterministic.
-    """
     _validate(supply, demand, cost_matrix, initial_allocation)
     m, n = len(supply), len(demand)
     x = [list(map(float, row)) for row in initial_allocation]
     costs = [list(map(float, row)) for row in cost_matrix]
     basis = {(i, j) for i in range(m) for j in range(n) if x[i][j] > 0}
 
-    # Complete a spanning-tree basis with zero (epsilon) cells, avoiding cycles.
     parent = list(range(m + n))
     def find(a):
         while parent[a] != a:
@@ -85,7 +76,6 @@ def modi_optimize(supply, demand, cost_matrix, initial_allocation, max_iteration
 
     iterations = 0
     while iterations < max_iterations:
-        # Solve u_i + v_j = c_ij for basic cells.
         u, v = [None] * m, [None] * n
         u[0] = 0.0
         changed = True
@@ -96,7 +86,6 @@ def modi_optimize(supply, demand, cost_matrix, initial_allocation, max_iteration
                     v[j] = costs[i][j] - u[i]; changed = True
                 elif v[j] is not None and u[i] is None:
                     u[i] = costs[i][j] - v[j]; changed = True
-        # Normally connected after basis completion; safeguard disconnected components.
         for i in range(m):
             if u[i] is None:
                 u[i] = 0.0
@@ -115,11 +104,10 @@ def modi_optimize(supply, demand, cost_matrix, initial_allocation, max_iteration
             out = [[int(round(val)) if abs(val-round(val)) < 1e-9 else val for val in row] for row in x]
             return {"allocation": out, "total_cost": total, "iterations": iterations, "is_optimal": True,
                     "potentials_u": u, "potentials_v": v, "reduced_costs": reduced}
-        _, ei, ej = min(entering)  # most negative reduced cost
+        _, ei, ej = min(entering)
         cycle = _find_cycle(basis, (ei, ej), m, n)
         if not cycle:
             raise RuntimeError("Could not construct a MODI improvement loop; basis may be invalid.")
-        # Cycle returned includes start at end. Signs + - + - ...
         cycle_cells = cycle[:-1]
         minus_cells = cycle_cells[1::2]
         theta = min(x[i][j] for i, j in minus_cells)
@@ -128,7 +116,6 @@ def modi_optimize(supply, demand, cost_matrix, initial_allocation, max_iteration
             if abs(x[i][j]) < 1e-9:
                 x[i][j] = 0.0
         basis.add((ei, ej))
-        # Remove one zero minus cell to keep a tree basis (deterministic tie break).
         zero_minus = sorted((i, j) for i, j in minus_cells if abs(x[i][j]) < 1e-9)
         if zero_minus:
             basis.remove(zero_minus[0])
@@ -137,6 +124,4 @@ def modi_optimize(supply, demand, cost_matrix, initial_allocation, max_iteration
 
 
 def solve_modi(supply, demand, cost_matrix, initial_allocation):
-    result = modi_optimize(supply, demand, cost_matrix, initial_allocation)
-    return result["allocation"], result["total_cost"]
-
+    result = modi_
