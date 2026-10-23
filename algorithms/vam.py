@@ -47,7 +47,9 @@ def vogel_approximation(supply, demand, cost_matrix) -> Dict[str, Any]:
     max_cap = ROUTE_CAPACITIES.get(("S3", "A5"), float('inf'))
 
     def penalty(values):
-        ordered = sorted(values)
+        # Exclude BIG_M values when calculating line penalties
+        valid_vals = [v for v in values if v < BIG_M]
+        ordered = sorted(valid_vals)
         return ordered[1] - ordered[0] if len(ordered) >= 2 else ordered[0] if ordered else -1
 
     while active_rows and active_cols:
@@ -60,6 +62,10 @@ def vogel_approximation(supply, demand, cost_matrix) -> Dict[str, Any]:
             p = penalty([costs[i][j] for i in active_rows])
             cheapest = min(active_rows, key=lambda i: (costs[i][j], i))
             candidates.append((p, -costs[cheapest][j], 0, -j, cheapest, j))
+        
+        if not candidates:
+            break
+
         _, _, _, _, i, j = max(candidates)
         
         allowed_qty = min(supply_left[i], demand_left[j])
