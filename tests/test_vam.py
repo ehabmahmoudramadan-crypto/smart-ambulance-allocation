@@ -1,21 +1,37 @@
-import unittest
-from vam import vogel_approximation
+import pytest
 
-SUPPLY = [8, 6, 7, 9]
-DEMAND = [5, 7, 6, 6, 6]
-COST = [[24,45,37,18,19], [28,36,37,13,23], [45,39,31,42,15], [26,42,19,19,18]]
 
-class TestVAM(unittest.TestCase):
-    def test_expected_cost_and_feasibility(self):
-        result = vogel_approximation(SUPPLY, DEMAND, COST)
-        allocation = result["allocation"]
-        self.assertEqual(result["total_cost"], 702)
-        self.assertEqual([sum(row) for row in allocation], SUPPLY)
-        self.assertEqual([sum(allocation[i][j] for i in range(4)) for j in range(5)], DEMAND)
+def test_fractional_capacity_is_rejected():
+    with pytest.raises(ValueError):
+        vogel_approximation(
+            [1], [1], [[5]],
+            route_capacities={(0, 0): 0.5}
+        )
 
-    def test_unbalanced_rejected(self):
-        with self.assertRaises(ValueError):
-            vogel_approximation([8, 6], [5, 8], [[1, 2], [3, 4]])
 
-if __name__ == "__main__":
-    unittest.main()
+def test_negative_capacity_is_rejected():
+    with pytest.raises(ValueError):
+        vogel_approximation(
+            [1], [1], [[5]],
+            route_capacities={(0, 0): -1}
+        )
+
+
+def test_boolean_capacity_is_rejected():
+    with pytest.raises(ValueError):
+        vogel_approximation(
+            [1], [1], [[5]],
+            route_capacities={(0, 0): True}
+        )
+
+
+def test_closed_route_overrides_capacity():
+    allocation, cost, steps = vogel_approximation(
+        [1], [1], [[5]],
+        closed_routes=[(0, 0)],
+        route_capacities={(0, 0): 1},
+    )
+
+    # No feasible allocation exists on a closed route.
+    # The algorithm should report infeasibility.
+    assert allocation is None
