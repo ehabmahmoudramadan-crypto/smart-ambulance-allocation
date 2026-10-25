@@ -1,16 +1,35 @@
 import copy
 
-from algorithms.modi import modi_optimize
-from algorithms.vam import vogel_approximation
 from errors import SolverError
-from validation import area_name, station_name
 
 EPS = 1e-6
+
+
+def load_algorithms():
+    try:
+        from algorithms.modi import modi_method, solve_constrained_transport
+        from algorithms.vam import vogel_approximation
+    except ImportError as exc:
+        raise SolverError(
+            "The optimization algorithms are not available.",
+            "ALGORITHMS_UNAVAILABLE",
+            details={"reason": str(exc)},
+            status=501,
+        ) from exc
+    return vogel_approximation, modi_method, solve_constrained_transport
 
 
 def clean_number(value):
     value = round(float(value), 6)
     return int(value) if value.is_integer() else value
+
+
+def clean_list(values):
+    return None if values is None else [clean_number(v) for v in values]
+
+
+def clean_matrix(matrix):
+    return None if matrix is None else [clean_list(row) for row in matrix]
 
 
 def total_cost(allocation, costs):
@@ -23,10 +42,33 @@ def total_cost(allocation, costs):
     )
 
 
+def route_limits(closed_routes, route_capacities):
+    limits = dict(route_capacities)
+    for route in closed_routes:
+        limits[route] = 0
+    return limits
+
+
+def restriction_issues(allocation, limits, stations, areas):
+    return [
+        f"Route {stations[i]} to {areas[j]} carries {allocation[i][j]} ambulances "
+        f"but its limit is {limit}."
+        for (i, j), limit in sorted(limits.items())
+        if allocation[i][j] > limit
+    ]
+
+
 def run_stage(stage, func, *args):
     try:
         return func(*copy.deepcopy(args))
     except Exception as exc:
+        if isinstance(exc, RuntimeError) and "infeasible" in str(exc).lower():
+            raise SolverError(
+                "No feasible allocation exists under the given route restrictions.",
+                "NO_FEASIBLE_SOLUTION",
+                details={"reason": str(exc)},
+                status=422,
+            ) from exc
         raise SolverError(
             f"Failed to run {stage}.",
             "ALGORITHM_FAILED",
@@ -34,14 +76,22 @@ def run_stage(stage, func, *args):
         ) from exc
 
 
-def check_allocation(stage, allocation, supply, demand):
+def read_vam_result(raw):
+    if isinstance(raw, dict):
+        return raw.get("allocation"), raw.get("total_cost", raw.get("cost")), raw.get("steps") or []
+    if isinstance(raw, (tuple, list)) and len(raw) == 3:
+        return raw[0], raw[1], raw[2] or []
+    raise SolverError("The VAM result has an unexpected format.", "ALGORITHM_BAD_OUTPUT")
+
+
+def check_allocation(stage, allocation, supply, demand, stations, areas, limits):
     m, n = len(supply), len(demand)
     if not isinstance(allocation, list) or len(allocation) != m:
         raise SolverError(f"The {stage} result has invalid dimensions.", "ALGORITHM_INFEASIBLE")
 
     clean = []
     for i, row in enumerate(allocation):
-        if len(row) != n:
+        if not isinstance(row, (list, tuple)) or len(row) != n:
             raise SolverError(f"The {stage} result has invalid dimensions.", "ALGORITHM_INFEASIBLE")
         clean_row = []
         for j, value in enumerate(row):
@@ -51,13 +101,13 @@ def check_allocation(stage, allocation, supply, demand):
                 )
             if abs(value - round(value)) > EPS:
                 raise SolverError(
-                    f"The {stage} result contains a non-integer value at {station_name(i)}, {area_name(j)}.",
+                    f"The {stage} result contains a non-integer value at {stations[i]}, {areas[j]}.",
                     "ALGORITHM_INFEASIBLE",
                 )
             value = int(round(value))
             if value < 0:
                 raise SolverError(
-                    f"The {stage} result contains a negative value at {station_name(i)}, {area_name(j)}.",
+                    f"The {stage} result contains a negative value at {stations[i]}, {areas[j]}.",
                     "ALGORITHM_INFEASIBLE",
                 )
             clean_row.append(value)
@@ -66,42 +116,71 @@ def check_allocation(stage, allocation, supply, demand):
     for i in range(m):
         if sum(clean[i]) != supply[i]:
             raise SolverError(
-                f"The {stage} result: row {station_name(i)} does not add up to its supply.",
+                f"The {stage} result: row {stations[i]} does not add up to its supply.",
                 "ALGORITHM_INFEASIBLE",
             )
     for j in range(n):
         if sum(clean[i][j] for i in range(m)) != demand[j]:
             raise SolverError(
-                f"The {stage} result: column {area_name(j)} does not add up to its demand.",
+                f"The {stage} result: column {areas[j]} does not add up to its demand.",
                 "ALGORITHM_INFEASIBLE",
             )
+
+    issues = restriction_issues(clean, limits, stations, areas)
+    if issues:
+        raise SolverError(
+            f"The {stage} result violates a route restriction.",
+            "ALGORITHM_VIOLATES_RESTRICTIONS",
+            details={"issues": issues},
+        )
     return clean
 
 
-def finish_stage(stage, result, supply, demand, costs, warnings):
-    if not isinstance(result, dict) or "allocation" not in result:
-        raise SolverError(f"The {stage} result is incomplete.", "ALGORITHM_BAD_OUTPUT")
-    allocation = check_allocation(stage, result["allocation"], supply, demand)
-    cost = total_cost(allocation, costs)
-    reported = result.get("total_cost")
-    if isinstance(reported, (int, float)) and abs(reported - cost) > EPS:
-        warnings.append(
-            f"The {stage} reported cost ({reported}) differs from the cost computed from the matrix ({cost})."
-        )
+def finish_stage(stage, allocation, reported, problem, limits, warnings):
+    allocation = check_allocation(
+        stage,
+        allocation,
+        problem["supply"],
+        problem["demand"],
+        problem["stations"],
+        problem["areas"],
+        limits,
+    )
+    cost = total_cost(allocation, problem["cost_matrix"])
+    if isinstance(reported, (int, float)) and not isinstance(reported, bool):
+        if abs(reported - cost) > EPS:
+            warnings.append(
+                f"The {stage} reported cost ({reported}) differs from the cost "
+                f"computed from the matrix ({cost})."
+            )
     return allocation, cost
 
 
-def round_matrix(matrix):
-    return [[clean_number(v) for v in row] for row in matrix]
+def format_steps(steps, stations, areas):
+    keys = {"row", "column", "quantity", "unit_cost"}
+    formatted = []
+    for k, step in enumerate(steps):
+        if not isinstance(step, dict) or not keys <= step.keys():
+            return []
+        formatted.append(
+            {
+                "step": k + 1,
+                "station": stations[step["row"]],
+                "area": areas[step["column"]],
+                "quantity": step["quantity"],
+                "unit_cost": clean_number(step["unit_cost"]),
+            }
+        )
+    return formatted
 
 
-def compare(current, proposed):
+def compare(current, proposed, stations, areas):
     m, n = len(proposed), len(proposed[0])
     delta = [[proposed[i][j] - current[i][j] for j in range(n)] for i in range(m)]
     changes = [
         {
-            "station": station_name(i),
-            "area": area_name(j),
+            "station": stations[i],
+            "area": areas[j],
             "current": current[i][j],
             "proposed": proposed[i][j],
             "delta": delta[i][j],
@@ -114,62 +193,100 @@ def compare(current, proposed):
 
 
 def solve(problem):
+    vam, modi, constrained = load_algorithms()
+
     supply = problem["supply"]
     demand = problem["demand"]
     costs = problem["cost_matrix"]
+    stations = problem["stations"]
+    areas = problem["areas"]
+    closed = problem["closed_routes"]
+    capacities = problem["route_capacities"]
+    limits = route_limits(closed, capacities)
     warnings = []
 
-    vam_result = run_stage("VAM", vogel_approximation, supply, demand, costs)
-    initial_allocation, initial_cost = finish_stage(
-        "VAM", vam_result, supply, demand, costs, warnings
-    )
+    raw = run_stage("VAM", vam, supply, demand, costs, closed, capacities)
+    vam_allocation, vam_reported, vam_steps = read_vam_result(raw)
 
-    modi_result = run_stage("MODI", modi_optimize, supply, demand, costs, initial_allocation)
+    initial = None
+    if vam_allocation is None:
+        warnings.append(
+            "VAM could not build a feasible initial allocation under the route restrictions."
+        )
+    else:
+        allocation, cost = finish_stage(
+            "VAM", vam_allocation, vam_reported, problem, limits, warnings
+        )
+        initial = {
+            "method": "VAM",
+            "allocation": allocation,
+            "cost": cost,
+            "steps": format_steps(vam_steps, stations, areas),
+        }
+
+    if initial:
+        modi_result = run_stage(
+            "MODI", modi, initial["allocation"], supply, demand, costs, closed, capacities
+        )
+    else:
+        modi_result = run_stage(
+            "MODI", constrained, supply, demand, costs, closed, capacities
+        )
+    if not isinstance(modi_result, dict) or "allocation" not in modi_result:
+        raise SolverError("The MODI result is incomplete.", "ALGORITHM_BAD_OUTPUT")
+
     final_allocation, final_cost = finish_stage(
-        "MODI", modi_result, supply, demand, costs, warnings
+        "MODI",
+        modi_result["allocation"],
+        modi_result.get("cost"),
+        problem,
+        limits,
+        warnings,
     )
-
-    if final_cost > initial_cost + EPS:
+    if initial and final_cost > initial["cost"] + EPS:
         raise SolverError(
-            "The MODI result costs more than the initial solution.", "ALGORITHM_WORSE_THAN_INITIAL"
+            "The MODI result costs more than the initial solution.",
+            "ALGORITHM_WORSE_THAN_INITIAL",
         )
 
-    steps = [
-        {
-            "step": k + 1,
-            "station": station_name(s["row"]),
-            "area": area_name(s["column"]),
-            "quantity": s["quantity"],
-            "unit_cost": clean_number(s["unit_cost"]),
-        }
-        for k, s in enumerate(vam_result.get("steps", []))
-    ]
+    optimal = {
+        "method": "MODI",
+        "solver": modi_result.get("method"),
+        "allocation": final_allocation,
+        "cost": final_cost,
+        "improvement": clean_number(initial["cost"] - final_cost) if initial else None,
+        "iterations": modi_result.get("iterations"),
+        "is_optimal": modi_result.get("is_optimal"),
+        "potentials_u": clean_list(modi_result.get("potentials_u")),
+        "potentials_v": clean_list(modi_result.get("potentials_v")),
+        "reduced_costs": clean_matrix(modi_result.get("reduced_costs")),
+    }
 
     result = {
         "problem": {
             "supply": supply,
             "demand": demand,
             "cost_matrix": costs,
-            "stations": [station_name(i) for i in range(len(supply))],
-            "areas": [area_name(j) for j in range(len(demand))],
+            "stations": stations,
+            "areas": areas,
             "total_vehicles": sum(supply),
         },
-        "initial": {
-            "method": "VAM",
-            "allocation": initial_allocation,
-            "cost": initial_cost,
-            "steps": steps,
+        "constraints": {
+            "closed_routes": [
+                {"from": stations[i], "to": areas[j]} for i, j in closed
+            ],
+            "route_capacities": [
+                {
+                    "from": stations[i],
+                    "to": areas[j],
+                    "max": cap,
+                    "used": final_allocation[i][j],
+                }
+                for (i, j), cap in sorted(capacities.items())
+            ],
         },
-        "optimal": {
-            "method": "MODI",
-            "allocation": final_allocation,
-            "cost": final_cost,
-            "iterations": modi_result.get("iterations"),
-            "is_optimal": bool(modi_result.get("is_optimal", False)),
-            "potentials_u": [clean_number(v) for v in modi_result.get("potentials_u", [])],
-            "potentials_v": [clean_number(v) for v in modi_result.get("potentials_v", [])],
-            "reduced_costs": round_matrix(modi_result.get("reduced_costs", [])),
-        },
+        "initial": initial,
+        "optimal": optimal,
         "current": None,
         "comparison": None,
         "warnings": warnings,
@@ -177,10 +294,12 @@ def solve(problem):
 
     current = problem.get("current_allocation")
     if current is not None:
+        for issue in restriction_issues(current, limits, stations, areas):
+            warnings.append(f"Current allocation: {issue}")
         current_cost = total_cost(current, costs)
         saving = clean_number(current_cost - final_cost)
         percent = round(saving / current_cost * 100, 2) if current_cost else 0.0
-        delta, changes = compare(current, final_allocation)
+        delta, changes = compare(current, final_allocation, stations, areas)
         result["current"] = {"allocation": current, "cost": current_cost}
         result["comparison"] = {
             "saving": saving,
