@@ -1,12 +1,15 @@
 
 """MODI and constrained transportation optimizer.
 
-MODI improves an initial basic feasible transportation solution.
-For additional route constraints, SciPy LP provides the exact
-constrained optimum when the LP solver succeeds.
+MODI improves an initial basic feasible transportation solution and
+supports closed routes and route capacities. SciPy LP provides the exact
+constrained optimum when no feasible starting solution is available.
 """
 
+from collections import deque
 from copy import deepcopy
+
+EPS = 1e-9
 
 
 def calculate_cost(allocation, cost_matrix):
@@ -160,11 +163,179 @@ def solve_constrained_transport(
     }
 
 
+class NotBasicSolution(Exception):
+    pass
+
+
+def _upper_bounds(m, n, closed_routes, route_capacities):
+    upper = [[None] * n for _ in range(m)]
+    for (i, j), cap in (route_capacities or {}).items():
+        upper[i][j] = cap
+    for i, j in closed_routes:
+        upper[i][j] = 0
+    return upper
+
+
+def _find_cycle(basis, start, m, n):
+    cells = set(basis)
+    cells.add(start)
+    row_cells = {i: [c for c in cells if c[0] == i] for i in range(m)}
+    col_cells = {j: [c for c in cells if c[1] == j] for j in range(n)}
+
+    def dfs(cell, move_row, path):
+        i, j = cell
+        neighbors = row_cells[i] if move_row else col_cells[j]
+        for nxt in sorted(neighbors):
+            if nxt == cell:
+                continue
+            if nxt == start and len(path) >= 4 and not move_row:
+                return path + [start]
+            if nxt in path:
+                continue
+            found = dfs(nxt, not move_row, path + [nxt])
+            if found:
+                return found
+        return None
+
+    return dfs(start, True, [start]) or dfs(start, False, [start])
+
+
+def _potentials(basis, costs, m, n):
+    row_cells = {i: [] for i in range(m)}
+    col_cells = {j: [] for j in range(n)}
+    for i, j in basis:
+        row_cells[i].append(j)
+        col_cells[j].append(i)
+
+    u = [None] * m
+    v = [None] * n
+    u[0] = 0.0
+    queue = deque([("row", 0)])
+    while queue:
+        kind, k = queue.popleft()
+        if kind == "row":
+            for j in row_cells[k]:
+                if v[j] is None:
+                    v[j] = costs[k][j] - u[k]
+                    queue.append(("col", j))
+        else:
+            for i in col_cells[k]:
+                if u[i] is None:
+                    u[i] = costs[i][k] - v[k]
+                    queue.append(("row", i))
+
+    if any(value is None for value in u + v):
+        raise RuntimeError("The basis does not connect all stations and areas.")
+    return u, v
+
+
+def _room(value, upper, sign):
+    if sign > 0:
+        return float("inf") if upper is None else upper - value
+    return value
+
+
+def modi_optimize(supply, demand, cost_matrix, initial_allocation,
+                  closed_routes=(), route_capacities=None,
+                  max_iterations=1000):
+    m, n = len(supply), len(demand)
+    upper = _upper_bounds(m, n, closed_routes, route_capacities)
+    x = [list(row) for row in initial_allocation]
+    costs = [list(map(float, row)) for row in cost_matrix]
+
+    parent = list(range(m + n))
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra == rb:
+            return False
+        parent[rb] = ra
+        return True
+
+    basis = set()
+    for i in range(m):
+        for j in range(n):
+            inside = x[i][j] > 0 and (upper[i][j] is None or x[i][j] < upper[i][j])
+            if inside:
+                if not union(i, m + j):
+                    raise NotBasicSolution("The starting solution contains a cycle.")
+                basis.add((i, j))
+
+    spare = sorted(
+        (upper[i][j] == 0, costs[i][j], i, j)
+        for i in range(m) for j in range(n)
+        if (i, j) not in basis
+    )
+    for _, _, i, j in spare:
+        if len(basis) == m + n - 1:
+            break
+        if union(i, m + j):
+            basis.add((i, j))
+
+    for iteration in range(max_iterations + 1):
+        u, v = _potentials(basis, costs, m, n)
+        reduced = [
+            [0.0 if (i, j) in basis else costs[i][j] - u[i] - v[j] for j in range(n)]
+            for i in range(m)
+        ]
+
+        entering = None
+        best_gain = EPS
+        for i in range(m):
+            for j in range(n):
+                if (i, j) in basis or upper[i][j] == 0:
+                    continue
+                at_upper = upper[i][j] is not None and x[i][j] == upper[i][j]
+                if not at_upper and reduced[i][j] < -best_gain:
+                    entering, direction, best_gain = (i, j), 1, -reduced[i][j]
+                elif at_upper and reduced[i][j] > best_gain:
+                    entering, direction, best_gain = (i, j), -1, reduced[i][j]
+
+        if entering is None:
+            allocation = [[int(value) if float(value).is_integer() else value
+                           for value in row] for row in x]
+            return {
+                "allocation": allocation,
+                "cost": calculate_cost(allocation, cost_matrix),
+                "success": True,
+                "message": "Optimal: all reduced costs satisfy the optimality conditions.",
+                "method": "MODI (u-v method)",
+                "iterations": iteration,
+                "is_optimal": True,
+                "potentials_u": u,
+                "potentials_v": v,
+                "reduced_costs": reduced,
+            }
+
+        cycle = _find_cycle(basis, entering, m, n)
+        if not cycle:
+            raise RuntimeError("Could not construct a MODI improvement loop.")
+        cells = cycle[:-1]
+        signs = [direction if k % 2 == 0 else -direction for k in range(len(cells))]
+        rooms = [_room(x[i][j], upper[i][j], s) for (i, j), s in zip(cells, signs)]
+        theta = min(rooms)
+        leaving = rooms.index(theta)
+
+        for (i, j), s in zip(cells, signs):
+            x[i][j] += s * theta
+        if leaving != 0:
+            basis.remove(cells[leaving])
+            basis.add(entering)
+
+    raise RuntimeError(f"MODI reached max_iterations={max_iterations} before proving optimality.")
+
+
 def modi_method(
     initial_allocation, supply, demand, cost_matrix,
     closed_routes=(), route_capacities=None
 ):
-    """Validate the VAM initial solution, then optimize constraints."""
+    """Validate the VAM initial solution, then optimize with route restrictions."""
     initial = deepcopy(initial_allocation)
 
     valid, message = validate_allocation(
@@ -173,10 +344,21 @@ def modi_method(
 
     initial_cost = calculate_cost(initial, cost_matrix)
 
-    result = solve_constrained_transport(
-        supply, demand, cost_matrix,
-        closed_routes, route_capacities
-    )
+    result = None
+    if valid:
+        try:
+            result = modi_optimize(
+                supply, demand, cost_matrix, initial,
+                closed_routes, route_capacities
+            )
+        except NotBasicSolution:
+            result = None
+
+    if result is None:
+        result = solve_constrained_transport(
+            supply, demand, cost_matrix,
+            closed_routes, route_capacities
+        )
 
     result["initial_cost"] = initial_cost
     result["improvement"] = initial_cost - result["cost"]
