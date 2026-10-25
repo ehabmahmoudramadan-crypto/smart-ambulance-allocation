@@ -1,2 +1,4 @@
 flask>=2.2
 pytest>=7.0
+scipy>=1.11
+pytest>=8.0
