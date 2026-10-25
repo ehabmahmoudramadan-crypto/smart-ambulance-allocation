@@ -3,39 +3,26 @@
 **Project:** Smart Ambulance Allocation System | **Role:** MODI Manual Solution 
 
 ---
-1. Model Data Matrix (Costs in minutes)
+## 1. Model Data Matrix (Costs in minutes)
 
-Each cost 
-c
-i
-j
- is the estimated travel time in minutes, so 
-Z
- is measured in minutes × allocated ambulances.
+Each cost $c_{ij}$ is the estimated travel time in minutes, so $Z$ is measured in minutes × allocated ambulances.
 
-A1	A2	A3	A4	A5	A6	A7	A8	A9	A10	A11	A12	Supply
-S1	17	24	31	15	47	43	32	14	11	42	33	31	10
-S2	24	6	15	33	24	16	5 ✗	20	26	20	43	28	10
-S3	31	34	40	8	56	53	26	25	17	47	28	31	10
-S4	31	17	10	28	28	25	25	13	19	18	28	13	10
-S5	37	25	9	33	23	26	30	24	1 (≤5)	13	29	14	9
-S6	30	17	9	38	17	17	40	25	28	8	38	22	10
-S7	33	22	8	33	20	20	30	24	23	12	29	14	9
-S8	15	19	25	21	39	34	32	9	13	33	36	26	10
-Demand	4	6	7	4	7	8	7	5	12	6	8	4	78
-Total supply = total demand = 78, so the problem is balanced. ✗ = closed route (
-S
-2
-→
-A
-7
-, maintenance)[cite: 16], (≤5) = route capacity limit (
-S
-5
-→
-A
-9
-)[cite: 16].
+| Station | A1 | A2 | A3 | A4 | A5 | A6 | A7 | A8 | A9 | A10 | A11 | A12 | Supply ($s_i$) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **S1** | 17 | 24 | 31 | 15 | 47 | 43 | 32 | 14 | 11 | 42 | 33 | 31 | **10** |
+| **S2** | 24 | 6 | 15 | 33 | 24 | 16 | ~~5~~ ✗ | 20 | 26 | 20 | 43 | 28 | **10** |
+| **S3** | 31 | 34 | 40 | 8 | 56 | 53 | 26 | 25 | 17 | 47 | 28 | 31 | **10** |
+| **S4** | 31 | 17 | 10 | 28 | 28 | 25 | 25 | 13 | 19 | 18 | 28 | 13 | **10** |
+| **S5** | 37 | 25 | 9 | 33 | 23 | 26 | 30 | 24 | 1 (≤5) | 13 | 29 | 14 | **9** |
+| **S6** | 30 | 17 | 9 | 38 | 17 | 17 | 40 | 25 | 28 | 8 | 38 | 22 | **10** |
+| **S7** | 33 | 22 | 8 | 33 | 20 | 20 | 30 | 24 | 23 | 12 | 29 | 14 | **9** |
+| **S8** | 15 | 19 | 25 | 21 | 39 | 34 | 32 | 9 | 13 | 33 | 36 | 26 | **10** |
+| **Demand** | **4** | **6** | **7** | **4** | **7** | **8** | **7** | **5** | **12** | **6** | **8** | **4** | **78** |
+
+* **Balanced System:** Total supply = total demand = 78 ambulances.
+* **Operational Constraints:** 
+  * ✗ = Closed route ($S_2 \to A_7$, maintenance / prohibited route).
+  * (≤5) = Bounded route capacity limit ($S_5 \to A_9 \le 5$).
 ## 1. Initial Feasible Allocation from VAM Method
 
 The starting solution is derived from the strictly-evaluated 18-step VAM method (Baseline Cost $Z_{VAM} = 1257$ minutes × ambulances).
