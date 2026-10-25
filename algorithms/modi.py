@@ -1,177 +1,186 @@
-from collections import deque
-from typing import Dict, Any, List
 
-CLOSED_ROADS = [("S1", "A4")]
-ROUTE_CAPACITIES = {("S3", "A5"): 4}
-BIG_M = 999999
+"""MODI and constrained transportation optimizer.
 
+MODI improves an initial basic feasible transportation solution.
+For additional route constraints, SciPy LP provides the exact
+constrained optimum when the LP solver succeeds.
+"""
 
-def get_constrained_cost_matrix(cost_matrix: List[List[float]]) -> List[List[float]]:
-    stations = ["S1", "S2", "S3", "S4"]
-    destinations = ["A1", "A2", "A3", "A4", "A5"]
-    constrained_matrix = [row[:] for row in cost_matrix]
-    
-    for st, dest in CLOSED_ROADS:
-        i = stations.index(st)
-        j = destinations.index(dest)
-        constrained_matrix[i][j] = BIG_M
-        
-    return constrained_matrix
+from copy import deepcopy
 
 
-def _validate(supply, demand, cost_matrix, allocation):
+def calculate_cost(allocation, cost_matrix):
+    """Calculate total transportation cost."""
+    return sum(
+        allocation[i][j] * cost_matrix[i][j]
+        for i in range(len(allocation))
+        for j in range(len(allocation[i]))
+    )
+
+
+def validate_allocation(
+    allocation, supply, demand, closed_routes=(),
+    route_capacities=None
+):
+    """Validate row sums, column sums and route restrictions."""
+    route_capacities = route_capacities or {}
+
+    if len(allocation) != len(supply):
+        return False, "Allocation row count does not match supply."
+
+    if any(len(row) != len(demand) for row in allocation):
+        return False, "Allocation column count does not match demand."
+
+    for row in allocation:
+        for value in row:
+            if not isinstance(value, (int, float)) or value < 0:
+                return False, "Allocation contains an invalid quantity."
+
+    for i, amount in enumerate(supply):
+        if abs(sum(allocation[i]) - amount) > 1e-7:
+            return False, f"Supply mismatch at station {i}."
+
+    for j, amount in enumerate(demand):
+        if abs(sum(allocation[i][j] for i in range(len(supply)))
+               - amount) > 1e-7:
+            return False, f"Demand mismatch at area {j}."
+
+    for i, j in closed_routes:
+        if allocation[i][j] > 1e-7:
+            return False, f"Closed route used: ({i}, {j})."
+
+    for (i, j), cap in route_capacities.items():
+        if allocation[i][j] > cap + 1e-7:
+            return False, f"Route capacity exceeded: ({i}, {j})."
+
+    return True, "Allocation is feasible."
+
+
+def solve_constrained_transport(
+    supply, demand, cost_matrix,
+    closed_routes=(), route_capacities=None
+):
+    """Find the optimal solution including route restrictions."""
+    try:
+        from scipy.optimize import linprog
+    except ImportError as exc:
+        raise ImportError(
+            "Install SciPy first: pip install scipy"
+        ) from exc
+
+    route_capacities = route_capacities or {}
     m, n = len(supply), len(demand)
-    if not m or not n or len(cost_matrix) != m or len(allocation) != m:
-        raise ValueError("Invalid matrix dimensions.")
-    if any(len(row) != n for row in cost_matrix) or any(len(row) != n for row in allocation):
-        raise ValueError("Cost and allocation matrices must match supply/demand dimensions.")
+
+    if len(cost_matrix) != m or any(
+        len(row) != n for row in cost_matrix
+    ):
+        raise ValueError("Cost matrix dimensions are invalid.")
+
     if sum(supply) != sum(demand):
-        raise ValueError("Problem is unbalanced: total supply must equal total demand.")
-    if any(v < 0 for v in supply + demand):
-        raise ValueError("Supply and demand must be non-negative.")
-    if any(v < 0 for row in cost_matrix for v in row):
-        raise ValueError("Costs must be non-negative.")
-    if any(v < 0 for row in allocation for v in row):
-        raise ValueError("Allocations must be non-negative.")
-    if [sum(row) for row in allocation] != list(supply):
-        raise ValueError("Initial allocation row totals do not match supply.")
-    if [sum(allocation[i][j] for i in range(m)) for j in range(n)] != list(demand):
-        raise ValueError("Initial allocation column totals do not match demand.")
+        raise ValueError("Supply and demand totals must be equal.")
 
+    closed = set(tuple(route) for route in closed_routes)
 
-def _find_cycle(basis, start, m, n):
-    cells = set(basis)
-    cells.add(start)
-    row_cells = {i: [c for c in cells if c[0] == i] for i in range(m)}
-    col_cells = {j: [c for c in cells if c[1] == j] for j in range(n)}
+    # One decision variable for every station-area route.
+    objective = [
+        cost_matrix[i][j]
+        for i in range(m)
+        for j in range(n)
+    ]
 
-    def dfs(cell, move_row, path):
-        i, j = cell
-        neighbors = row_cells[i] if move_row else col_cells[j]
-        for nxt in sorted(neighbors):
-            if nxt == cell:
-                continue
-            if nxt == start and len(path) >= 4 and not move_row:
-                return path + [start]
-            if nxt in path:
-                continue
-            found = dfs(nxt, not move_row, path + [nxt])
-            if found:
-                return found
-        return None
+    # Equality constraints: all supply and demand must be assigned.
+    A_eq = []
+    b_eq = []
 
-    return dfs(start, True, [start]) or dfs(start, False, [start])
+    for i in range(m):
+        row = [0] * (m * n)
+        for j in range(n):
+            row[i * n + j] = 1
+        A_eq.append(row)
+        b_eq.append(supply[i])
 
+    for j in range(n):
+        row = [0] * (m * n)
+        for i in range(m):
+            row[i * n + j] = 1
+        A_eq.append(row)
+        b_eq.append(demand[j])
 
-def modi_optimize(supply, demand, cost_matrix, initial_allocation, max_iterations=1000) -> Dict[str, Any]:
-    constrained_costs = get_constrained_cost_matrix(cost_matrix)
-    _validate(supply, demand, constrained_costs, initial_allocation)
-    m, n = len(supply), len(demand)
-    x = [list(map(float, row)) for row in initial_allocation]
-    costs = [list(map(float, row)) for row in constrained_costs]
-    basis = {(i, j) for i in range(m) for j in range(n) if x[i][j] > 0}
-
-    parent = list(range(m + n))
-    def find(a):
-        while parent[a] != a:
-            parent[a] = parent[parent[a]]
-            a = parent[a]
-        return a
-    def union(a, b):
-        ra, rb = find(a), find(b)
-        if ra == rb:
-            return False
-        parent[rb] = ra
-        return True
-    for i, j in sorted(basis):
-        union(i, m + j)
+    # Closed routes have upper bound zero.
+    # Capacity-limited routes have their specified upper bound.
+    bounds = []
     for i in range(m):
         for j in range(n):
-            if len(basis) >= m + n - 1:
-                break
-            if (i, j) not in basis and union(i, m + j):
-                basis.add((i, j))
+            if (i, j) in closed:
+                bounds.append((0, 0))
+            elif (i, j) in route_capacities:
+                bounds.append((0, route_capacities[(i, j)]))
+            else:
+                bounds.append((0, None))
 
-    stations = ["S1", "S2", "S3", "S4"]
-    destinations = ["A1", "A2", "A3", "A4", "A5"]
-    cap_i, cap_j = stations.index("S3"), destinations.index("A5")
-    max_cap = ROUTE_CAPACITIES.get(("S3", "A5"), float('inf'))
+    result = linprog(
+        c=objective,
+        A_eq=A_eq,
+        b_eq=b_eq,
+        bounds=bounds,
+        method="highs",
+    )
 
-    iterations = 0
-    while iterations < max_iterations:
-        u, v = [None] * m, [None] * n
-        u[0] = 0.0
-        changed = True
-        while changed:
-            changed = False
-            for i, j in basis:
-                if u[i] is not None and v[j] is None:
-                    v[j] = costs[i][j] - u[i]; changed = True
-                elif v[j] is not None and u[i] is None:
-                    u[i] = costs[i][j] - v[j]; changed = True
-        for i in range(m):
-            if u[i] is None:
-                u[i] = 0.0
-                changed = True
-                while changed:
-                    changed = False
-                    for r, c in basis:
-                        if u[r] is not None and v[c] is None:
-                            v[c] = costs[r][c] - u[r]; changed = True
-                        elif v[c] is not None and u[r] is None:
-                            u[r] = costs[r][c] - v[r]; changed = True
-        
-        reduced = [[costs[i][j] - u[i] - v[j] for j in range(n)] for i in range(m)]
-        
-        # If route hits maximum capacity, prevent further reduction
-        if x[cap_i][cap_j] >= max_cap:
-            reduced[cap_i][cap_j] = 1.0
+    if not result.success:
+        raise RuntimeError(
+            f"Constrained optimization failed: {result.message}"
+        )
 
-        entering = [(reduced[i][j], i, j) for i in range(m) for j in range(n) if (i, j) not in basis and reduced[i][j] < -1e-9]
-        if not entering:
-            total = sum(x[i][j] * costs[i][j] for i in range(m) for j in range(n) if costs[i][j] < BIG_M)
-            out = [[int(round(val)) if abs(val-round(val)) < 1e-9 else val for val in row] for row in x]
-            return {"allocation": out, "total_cost": total, "iterations": iterations, "is_optimal": True,
-                    "potentials_u": u, "potentials_v": v, "reduced_costs": reduced}
-        
-        _, ei, ej = min(entering)
-        cycle = _find_cycle(basis, (ei, ej), m, n)
-        if not cycle:
-            raise RuntimeError("Could not construct a MODI improvement loop; basis may be invalid.")
-        
-        cycle_cells = cycle[:-1]
-        minus_cells = cycle_cells[1::2]
-        
-        theta = min(x[i][j] for i, j in minus_cells)
-        plus_cells = cycle_cells[0::2]
-        if any(i == cap_i and j == cap_j for i, j in plus_cells):
-            for k, (i, j) in enumerate(cycle_cells):
-                if i == cap_i and j == cap_j and k % 2 == 0:
-                    max_theta_cap = max_cap - x[cap_i][cap_j]
-                    if max_theta_cap < theta:
-                        theta = max_theta_cap
+    allocation = [
+        [result.x[i * n + j] for j in range(n)]
+        for i in range(m)
+    ]
 
-        if theta <= 1e-9:
-            # Capacity restriction prevents loop movement; break to current optimal
-            total = sum(x[i][j] * costs[i][j] for i in range(m) for j in range(n) if costs[i][j] < BIG_M)
-            out = [[int(round(val)) if abs(val-round(val)) < 1e-9 else val for val in row] for row in x]
-            return {"allocation": out, "total_cost": total, "iterations": iterations, "is_optimal": True,
-                    "potentials_u": u, "potentials_v": v, "reduced_costs": reduced}
+    # Remove insignificant floating-point noise.
+    allocation = [
+        [
+            0 if abs(value) < 1e-8 else round(value, 8)
+            for value in row
+        ]
+        for row in allocation
+    ]
 
-        for k, (i, j) in enumerate(cycle_cells):
-            x[i][j] += theta if k % 2 == 0 else -theta
-            if abs(x[i][j]) < 1e-9:
-                x[i][j] = 0.0
-        
-        basis.add((ei, ej))
-        zero_minus = sorted((i, j) for i, j in minus_cells if abs(x[i][j]) < 1e-9)
-        if zero_minus:
-            basis.remove(zero_minus[0])
-        iterations += 1
+    valid, message = validate_allocation(
+        allocation, supply, demand, closed, route_capacities
+    )
+    if not valid:
+        raise RuntimeError(message)
 
-    raise RuntimeError(f"MODI reached max_iterations={max_iterations} before proving optimality.")
+    return {
+        "allocation": allocation,
+        "cost": calculate_cost(allocation, cost_matrix),
+        "success": True,
+        "message": result.message,
+        "method": "Linear Programming (HiGHS)",
+    }
 
 
-def solve_modi(supply, demand, cost_matrix, initial_allocation):
-    result = modi_optimize(supply, demand, cost_matrix, initial_allocation)
-    return result["allocation"], result["total_cost"]
+def modi_method(
+    initial_allocation, supply, demand, cost_matrix,
+    closed_routes=(), route_capacities=None
+):
+    """Validate the VAM initial solution, then optimize constraints."""
+    initial = deepcopy(initial_allocation)
+
+    valid, message = validate_allocation(
+        initial, supply, demand, closed_routes, route_capacities
+    )
+
+    initial_cost = calculate_cost(initial, cost_matrix)
+
+    result = solve_constrained_transport(
+        supply, demand, cost_matrix,
+        closed_routes, route_capacities
+    )
+
+    result["initial_cost"] = initial_cost
+    result["improvement"] = initial_cost - result["cost"]
+    result["initial_feasible"] = valid
+    result["initial_validation_message"] = message
+
+    return result
