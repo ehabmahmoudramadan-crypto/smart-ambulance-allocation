@@ -80,3 +80,82 @@ def _build_route_limits(supply, demand, closed_routes,
         limits[i][j] = 0
 
     return limits
+
+
+def vogel_approximation(supply, demand, cost_matrix,
+                        closed_routes=None, route_capacities=None):
+    closed_routes = closed_routes or []
+    route_capacities = route_capacities or {}
+    _validate_inputs(supply, demand, cost_matrix,
+                     closed_routes, route_capacities)
+    limits = _build_route_limits(supply, demand, closed_routes,
+                                 route_capacities)
+
+    m, n = len(supply), len(demand)
+    supply_left = list(supply)
+    demand_left = list(demand)
+    allocation = [[0] * n for _ in range(m)]
+    active_rows = {i for i, value in enumerate(supply_left) if value > 0}
+    active_cols = {j for j, value in enumerate(demand_left) if value > 0}
+    steps = []
+
+    def room(i, j):
+        quantity = min(supply_left[i], demand_left[j])
+        if limits[i][j] is None:
+            return quantity
+        return min(quantity, limits[i][j] - allocation[i][j])
+
+    def penalty(costs):
+        ordered = sorted(costs)
+        if len(ordered) == 1:
+            return float("inf")
+        return ordered[1] - ordered[0]
+
+    while active_rows and active_cols:
+        candidates = []
+        for i in sorted(active_rows):
+            open_cols = [j for j in active_cols if room(i, j) > 0]
+            if not open_cols:
+                return None, None, steps
+            cheapest = min(open_cols, key=lambda j: (cost_matrix[i][j], j))
+            candidates.append((
+                penalty([cost_matrix[i][j] for j in open_cols]),
+                -cost_matrix[i][cheapest], 1, -i, i, cheapest,
+            ))
+        for j in sorted(active_cols):
+            open_rows = [i for i in active_rows if room(i, j) > 0]
+            if not open_rows:
+                return None, None, steps
+            cheapest = min(open_rows, key=lambda i: (cost_matrix[i][j], i))
+            candidates.append((
+                penalty([cost_matrix[i][j] for i in open_rows]),
+                -cost_matrix[cheapest][j], 0, -j, cheapest, j,
+            ))
+
+        _, _, _, _, i, j = max(candidates)
+        quantity = room(i, j)
+        allocation[i][j] += quantity
+        supply_left[i] -= quantity
+        demand_left[j] -= quantity
+        steps.append({
+            "row": i,
+            "column": j,
+            "quantity": quantity,
+            "unit_cost": cost_matrix[i][j],
+        })
+        if supply_left[i] == 0:
+            active_rows.discard(i)
+        if demand_left[j] == 0:
+            active_cols.discard(j)
+
+    total_cost = sum(allocation[i][j] * cost_matrix[i][j]
+                     for i in range(m) for j in range(n))
+    return allocation, total_cost, steps
+
+
+def solve_vam(supply, demand, cost_matrix,
+              closed_routes=None, route_capacities=None):
+    allocation, total_cost, _ = vogel_approximation(
+        supply, demand, cost_matrix, closed_routes, route_capacities
+    )
+    return allocation, total_cost
