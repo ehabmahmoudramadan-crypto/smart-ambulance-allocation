@@ -1,24 +1,89 @@
-import unittest
-from modi import modi_optimize
 
-SUPPLY = [8, 6, 7, 9]
-DEMAND = [5, 7, 6, 6, 6]
-COST = [[24,45,37,18,19], [28,36,37,13,23], [45,39,31,42,15], [26,42,19,19,18]]
-INITIAL = [[5,3,0,0,0], [0,0,0,6,0], [0,1,0,0,6], [0,3,6,0,0]]
+import pytest
 
-class TestMODI(unittest.TestCase):
-    def test_optimal_cost_and_feasibility(self):
-        result = modi_optimize(SUPPLY, DEMAND, COST, INITIAL)
-        allocation = result["allocation"]
-        self.assertEqual(result["total_cost"], 690)
-        self.assertTrue(result["is_optimal"])
-        self.assertEqual([sum(row) for row in allocation], SUPPLY)
-        self.assertEqual([sum(allocation[i][j] for i in range(4)) for j in range(5)], DEMAND)
+from modi import (
+    calculate_cost,
+    validate_allocation,
+    solve_constrained_transport,
+)
 
-    def test_invalid_initial_solution_rejected(self):
-        with self.assertRaises(ValueError):
-            modi_optimize(SUPPLY, DEMAND, COST, [[0]*5 for _ in range(4)])
 
-if __name__ == "__main__":
-    unittest.main()
+def test_simple_transport_problem():
+    supply = [5, 5]
+    demand = [5, 5]
+    costs = [
+        [1, 10],
+        [10, 1],
+    ]
 
+    result = solve_constrained_transport(
+        supply, demand, costs
+    )
+
+    assert result["success"] is True
+    assert result["cost"] == 10
+
+
+def test_closed_route_is_respected():
+    supply = [1, 1]
+    demand = [1, 1]
+    costs = [
+        [1, 2],
+        [2, 1],
+    ]
+
+    result = solve_constrained_transport(
+        supply, demand, costs,
+        closed_routes=[(0, 0)],
+    )
+
+    assert result["allocation"][0][0] == 0
+    assert result["cost"] == 4
+
+
+def test_route_capacity_is_respected():
+    supply = [3, 2]
+    demand = [2, 3]
+    costs = [
+        [1, 5],
+        [4, 1],
+    ]
+
+    result = solve_constrained_transport(
+        supply, demand, costs,
+        route_capacities={(0, 0): 1},
+    )
+
+    assert result["allocation"][0][0] <= 1
+    assert result["cost"] == 11
+
+
+def test_infeasible_problem_raises_error():
+    with pytest.raises(RuntimeError):
+        solve_constrained_transport(
+            [2], [2], [[1]],
+            closed_routes=[(0, 0)],
+        )
+
+
+def test_invalid_allocation_fails_validation():
+    valid, message = validate_allocation(
+        [[2, 0], [0, 2]],
+        [1, 3],
+        [2, 2],
+    )
+
+    assert valid is False
+
+
+def test_cost_calculation():
+    allocation = [
+        [2, 1],
+        [0, 3],
+    ]
+    costs = [
+        [4, 5],
+        [7, 2],
+    ]
+
+    assert calculate_cost(allocation, costs) == 19
