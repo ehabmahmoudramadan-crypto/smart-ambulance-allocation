@@ -1,182 +1,236 @@
+"""Discrete-event simulation of a day of emergency calls.
+
+Both strategies see exactly the same calls (same arrival times, areas,
+priorities and on-scene durations), so the comparison is paired and fair.
+"""
+import heapq
+import itertools
+import math
+import random
+import statistics
+from dataclasses import replace
+
+from simulation.ambulance import Ambulance, IDLE, ON_SCENE, RETURNING, TO_SCENE
+from simulation.dispatcher import GreedyDispatcher, PlanDispatcher
+from simulation.incident import Incident
+
+ARRIVAL, ARRIVE_SCENE, CLEARED, HOME = range(4)
+PRIORITY_MIX = ([1, 2, 3], [0.2, 0.3, 0.5])
+SERVICE_RANGE = (20.0, 40.0)                 # minutes on scene
+TARGET_MINUTES = 20.0                        # "fast enough" response threshold
 
 
-from math import inf
+# ---------------------------------------------------------------- set-up
+def generate_incidents(demand, incidents_per_hour, hours, seed):
+    """Poisson arrivals; the area is drawn in proportion to the area's demand."""
+    rng = random.Random(seed)
+    rate = incidents_per_hour / 60.0
+    out, t = [], 0.0
+    while True:
+        t += rng.expovariate(rate)
+        if t > hours * 60:
+            return out
+        out.append(Incident(
+            id=len(out),
+            area=rng.choices(range(len(demand)), weights=demand)[0],
+            time=t,
+            priority=rng.choices(*PRIORITY_MIX)[0],
+            service=rng.uniform(*SERVICE_RANGE)))
 
 
-class Ambulance:
-    def __init__(self, ambulance_id, station_id):
-        self.id = ambulance_id
-        self.station_id = station_id
-        self.state = "Available"
-        self.current_location = station_id
+def fleet_greedy(supply):
+    amb = []
+    for i, s in enumerate(supply):
+        amb += [Ambulance(id=len(amb) + k, station=i) for k in range(s)]
+    return amb
 
 
-class Incident:
-    def __init__(self, incident_id, location, arrival_time):
-        self.id = incident_id
-        self.location = location
-        self.arrival_time = arrival_time
-        self.status = "Pending"
-        self.assigned_ambulance = None
-        self.response_time = None
+def fleet_from_plan(plan):
+    amb = []
+    for i, row in enumerate(plan):
+        for j, q in enumerate(row):
+            amb += [Ambulance(id=len(amb) + k, station=i, designated_area=j) for k in range(q)]
+    return amb
 
 
-class RoadNetwork:
-    def __init__(
-        self, stations, areas, cost_matrix,
-        closed_roads=None
-    ):
-        self.stations = stations
-        self.areas = areas
-        self.roads = {}
-        self.closed_roads = set(closed_roads or [])
-
-        for i, station in enumerate(stations):
-            for j, area in enumerate(areas):
-                self.roads[(station, area)] = cost_matrix[i][j]
-
-    def get_cost(self, station, area):
-        i = self.stations.index(station)
-        j = self.areas.index(area)
-
-        if (i, j) in self.closed_roads:
-            return inf
-
-        return self.roads.get((station, area), inf)
-
-
-class DispatcherAgent:
-    def __init__(
-        self, ambulances, allocation_matrix,
-        stations, areas, road_network
-    ):
+# ------------------------------------------------------------ simulation
+class Simulation:
+    def __init__(self, ambulances, dispatcher, incidents):
         self.ambulances = ambulances
-        self.allocation_plan = allocation_matrix
-        self.stations = stations
-        self.areas = areas
-        self.road_network = road_network
+        self.dispatcher = dispatcher
+        self.incidents = incidents
+        self.queue = []
+        self.max_queue = 0
+        self.end_time = 0.0
 
-        self.remaining_quota = {
-            (station, area): int(allocation_matrix[i][j])
-            for i, station in enumerate(stations)
-            for j, area in enumerate(areas)
-        }
+    def run(self):
+        seq = itertools.count()
+        events = [(i.time, next(seq), ARRIVAL, None, i) for i in self.incidents]
+        heapq.heapify(events)
+        push = lambda t, kind, a, inc: heapq.heappush(events, (t, next(seq), kind, a, inc))
+        d = self.dispatcher
 
-        self.response_times = []
-        self.failed_incidents = 0
+        while events:
+            now, _, kind, amb, inc = heapq.heappop(events)
+            self.end_time = now
+            if kind == ARRIVAL:
+                self.queue.append(inc)
+                self.max_queue = max(self.max_queue, len(self.queue))
+            elif kind == ARRIVE_SCENE:
+                inc.arrived_at = now
+                amb.state = ON_SCENE
+                push(now + inc.service, CLEARED, amb, inc)
+            elif kind == CLEARED:
+                amb.state = RETURNING
+                push(now + d.travel(amb, inc.area), HOME, amb, inc)
+            else:                                           # HOME
+                amb.state = IDLE
+                amb.busy_time += now - inc.dispatched_at
+                amb.missions += 1
+                d.release(amb, inc.area)
+            self._dispatch(now, push)
+        return self
 
-    def dispatch_ambulance(self, incident):
-        area = incident.location
-
-        if area not in self.areas:
-            incident.status = "Invalid Location"
-            self.failed_incidents += 1
-            print(f"[FAILED] Unknown area: {area}")
-            return None
-
-        # Find available ambulances on routes with
-        # a positive allocation quota and valid travel cost.
-        candidates = []
-
-        for ambulance in self.ambulances:
-            if ambulance.state != "Available":
+    def _dispatch(self, now, push):
+        if not self.queue:
+            return
+        idle = sum(a.state == IDLE for a in self.ambulances)
+        if not idle:                                   # everybody busy: nothing to decide
+            return
+        self.queue.sort(key=lambda i: (i.priority, i.time, i.id))
+        waiting = []
+        for inc in self.queue:
+            pick = self.dispatcher.select(inc, self.ambulances) if idle else None
+            if pick is None:
+                waiting.append(inc)
                 continue
-
-            station = ambulance.station_id
-            quota = self.remaining_quota.get((station, area), 0)
-            cost = self.road_network.get_cost(station, area)
-
-            if quota > 0 and cost < inf:
-                candidates.append((cost, station, ambulance))
-
-        # If no allocated route is available, use the
-        # fastest available ambulance on any open route.
-        if not candidates:
-            for ambulance in self.ambulances:
-                if ambulance.state != "Available":
-                    continue
-
-                station = ambulance.station_id
-                cost = self.road_network.get_cost(station, area)
-
-                if cost < inf:
-                    candidates.append((cost, station, ambulance))
-
-        if not candidates:
-            incident.status = "Unassigned"
-            self.failed_incidents += 1
-            print(
-                f"[FAILED] No available ambulance for "
-                f"incident #{incident.id}"
-            )
-            return None
-
-        cost, station, ambulance = min(
-            candidates, key=lambda item: item[0]
-        )
-
-        ambulance.state = "Dispatched"
-        ambulance.current_location = area
-
-        incident.status = "Assigned"
-        incident.assigned_ambulance = ambulance.id
-        incident.response_time = cost
-
-        key = (station, area)
-        if self.remaining_quota.get(key, 0) > 0:
-            self.remaining_quota[key] -= 1
-
-        self.response_times.append(cost)
-
-        print(
-            f"[SUCCESS] Incident #{incident.id}: "
-            f"Ambulance {ambulance.id}, Station {station}, "
-            f"Response time {cost} minutes"
-        )
-
-        return ambulance
-
-    def print_performance_summary(self):
-        print("\n========== SIMULATION SUMMARY ==========")
-        print(f"Assigned incidents: {len(self.response_times)}")
-        print(f"Unassigned incidents: {self.failed_incidents}")
-
-        if self.response_times:
-            print(
-                f"Average response time: "
-                f"{sum(self.response_times) / len(self.response_times):.2f}"
-            )
-            print(f"Maximum response time: {max(self.response_times)}")
-            print(f"Minimum response time: {min(self.response_times)}")
-        else:
-            print("No incidents were assigned.")
-
-        print("========================================")
+            idle -= 1
+            amb, fallback = pick
+            amb.state = TO_SCENE
+            self.dispatcher.reserve(amb, inc.area)
+            inc.dispatched_at, inc.ambulance_id, inc.fallback = now, amb.id, fallback
+            push(now + self.dispatcher.travel(amb, inc.area), ARRIVE_SCENE, amb, inc)
+        self.queue = waiting
 
 
-def run_simulation(
-    stations, areas, cost_matrix, allocation_matrix,
-    supply, incidents, closed_roads=None
-):
-    ambulances = [
-        Ambulance(f"{station}_Amb{i}", station)
-        for index, station in enumerate(stations)
-        for i in range(1, supply[index] + 1)
-    ]
+# --------------------------------------------------------------- metrics
+def _percentile(sorted_vals, p):
+    return sorted_vals[max(0, math.ceil(p * len(sorted_vals)) - 1)]
 
-    network = RoadNetwork(
-        stations, areas, cost_matrix, closed_roads
-    )
 
-    dispatcher = DispatcherAgent(
-        ambulances, allocation_matrix,
-        stations, areas, network
-    )
+def summarize(sim, horizon_minutes, n_areas):
+    done = [i for i in sim.incidents if i.response is not None]
+    resp = sorted(i.response for i in done)
+    crit = [i.response for i in done if i.priority == 1]
+    by_area = {}
+    for j in range(n_areas):
+        r = [i.response for i in done if i.area == j]
+        by_area[j] = statistics.fmean(r) if r else None
+    span = max(sim.end_time, horizon_minutes)
+    return {
+        "incidents": len(sim.incidents),
+        "unserved": len(sim.incidents) - len(done),
+        "mean_response": statistics.fmean(resp),
+        "median_response": statistics.median(resp),
+        "p90_response": _percentile(resp, 0.90),
+        "max_response": resp[-1],
+        "within_target_pct": 100 * sum(r <= TARGET_MINUTES for r in resp) / len(resp),
+        "critical_mean_response": statistics.fmean(crit) if crit else None,
+        "mean_wait": statistics.fmean(i.wait for i in done),
+        "max_queue": sim.max_queue,
+        "fallback_pct": 100 * sum(i.fallback for i in done) / len(done),
+        "utilization_pct": 100 * sum(a.busy_time for a in sim.ambulances)
+                           / (len(sim.ambulances) * span),
+        "by_area": by_area,
+    }
 
-    for incident in sorted(
-        incidents, key=lambda item: item.arrival_time
-    ):
-        dispatcher.dispatch_ambulance(incident)
 
-    dispatcher.print_performance_summary()
-    return dispatcher
+def simulate_once(strategy, ds, closed, caps, plan, incidents, hours):
+    """Run one strategy on (a private copy of) the given incidents."""
+    inc = [replace(i) for i in incidents]
+    if strategy == "greedy":
+        sim = Simulation(fleet_greedy(ds["supply"]),
+                         GreedyDispatcher(ds["cost_matrix"], closed, caps), inc)
+    elif strategy == "plan":
+        sim = Simulation(fleet_from_plan(plan),
+                         PlanDispatcher(ds["cost_matrix"], closed, caps), inc)
+    else:
+        raise ValueError(f"unknown strategy {strategy!r}")
+    sim.run()
+    out = summarize(sim, hours * 60, len(ds["demand"]))
+    out["audit"] = {"closed_uses": sim.dispatcher.closed_uses,
+                    "max_load": {k: v for k, v in sim.dispatcher.max_load.items()}}
+    return out
+
+
+# ------------------------------------------------------------ comparison
+def _mean_ci(values):
+    values = [v for v in values if v is not None]
+    if not values:
+        return {"mean": None, "ci": None}
+    m = statistics.fmean(values)
+    ci = 1.96 * statistics.stdev(values) / math.sqrt(len(values)) if len(values) > 1 else 0.0
+    return {"mean": m, "ci": ci}
+
+
+METRICS = ["mean_response", "median_response", "p90_response", "max_response",
+           "within_target_pct", "critical_mean_response", "mean_wait",
+           "max_queue", "fallback_pct", "utilization_pct", "unserved"]
+
+
+def run_comparison(ds, closed, caps, plan, incidents_per_hour=48, hours=24,
+                   reps=10, seed=2026):
+    runs = {"greedy": [], "plan": []}
+    for r in range(reps):
+        incidents = generate_incidents(ds["demand"], incidents_per_hour, hours, seed + r)
+        for s in runs:
+            runs[s].append(simulate_once(s, ds, closed, caps, plan, incidents, hours))
+
+    summary = {s: {m: _mean_ci([r[m] for r in rs]) for m in METRICS} for s, rs in runs.items()}
+    n_areas = len(ds["demand"])
+    per_area = {s: [statistics.fmean([v for v in (r["by_area"][j] for r in rs) if v is not None] or [0])
+                    for j in range(n_areas)] for s, rs in runs.items()}
+
+    def paired(metric):             # greedy minus plan, same incident streams
+        return _mean_ci([g[metric] - p[metric] for g, p in zip(runs["greedy"], runs["plan"])])
+
+    audit = {}
+    for s, rs in runs.items():
+        peak = {}
+        for r in rs:
+            for k, v in r["audit"]["max_load"].items():
+                peak[k] = max(peak.get(k, 0), v)
+        audit[s] = {
+            "closed_uses": sum(r["audit"]["closed_uses"] for r in rs),
+            "capped_routes": [{"route": f'{ds["stations"][i]} \u2192 {ds["areas"][j]}',
+                               "max_load": peak.get((i, j), 0), "cap": k}
+                              for i, j, k in caps]}
+
+    return {
+        "params": {"incidents_per_hour": incidents_per_hour, "hours": hours, "reps": reps,
+                   "seed": seed, "target_minutes": TARGET_MINUTES,
+                   "incidents_per_run": round(statistics.fmean(r["incidents"] for r in runs["greedy"]))},
+        "summary": summary,
+        "per_area": per_area,
+        "difference_greedy_minus_plan": {m: paired(m) for m in
+                                         ("mean_response", "p90_response", "within_target_pct")},
+        "audit": audit,
+    }
+
+
+def replay(strategy, ds, closed, caps, plan, incidents_per_hour, hours, seed):
+    """One run as a list of missions (for the live replay in the UI)."""
+    inc = generate_incidents(ds["demand"], incidents_per_hour, hours, seed)
+    fleet = fleet_greedy(ds["supply"]) if strategy == "greedy" else fleet_from_plan(plan)
+    disp = (GreedyDispatcher if strategy == "greedy" else PlanDispatcher)(ds["cost_matrix"], closed, caps)
+    sim = Simulation(fleet, disp, inc).run()
+    st = {a.id: a.station for a in fleet}
+    out = []
+    for i in sim.incidents:
+        s = st[i.ambulance_id]
+        back = i.arrived_at + i.service + ds["cost_matrix"][s][i.area]
+        out.append({"id": i.id, "area": i.area, "station": s, "priority": i.priority,
+                    "call": round(i.time, 1), "dispatch": round(i.dispatched_at, 1),
+                    "arrive": round(i.arrived_at, 1), "clear": round(i.arrived_at + i.service, 1),
+                    "home": round(back, 1)})
+    return out
