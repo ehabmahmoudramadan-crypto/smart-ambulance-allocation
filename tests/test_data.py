@@ -1,67 +1,29 @@
-import unittest
-
-from app import app
-from data import (
-    AREAS,
-    COST_MATRIX,
-    CURRENT_DISTRIBUTION,
-    DEMAND,
-    OPTIMAL_DISTRIBUTION,
-    REFERENCE_CURRENT_COST,
-    REFERENCE_OPTIMAL_COST,
-    STATIONS,
-    SUPPLY,
-    calculate_distribution_cost,
-    validate_data,
-    validate_distribution,
-)
+"""Phase 1 - data checks (no solver needed)."""
+from optimization.model import load_dataset, check_plan
 
 
-class TestAmbulanceData(unittest.TestCase):
-    def test_default_data_is_valid(self):
-        self.assertEqual(validate_data(), [])
-
-    def test_total_supply_equals_total_demand(self):
-        self.assertEqual(sum(SUPPLY), 78)
-        self.assertEqual(sum(DEMAND), 78)
-        self.assertEqual(sum(SUPPLY), sum(DEMAND))
-
-    def test_cost_matrix_dimensions(self):
-        self.assertEqual(len(COST_MATRIX), len(STATIONS))
-        self.assertTrue(all(len(row) == len(AREAS) for row in COST_MATRIX))
-
-    def test_current_distribution_cost_is_2097(self):
-        self.assertEqual(calculate_distribution_cost(CURRENT_DISTRIBUTION), 2097)
-        self.assertEqual(REFERENCE_CURRENT_COST, 2097)
-
-    def test_optimal_reference_cost_is_1111(self):
-        self.assertEqual(calculate_distribution_cost(OPTIMAL_DISTRIBUTION), 1111)
-        self.assertEqual(REFERENCE_OPTIMAL_COST, 1111)
-
-    def test_closed_route_has_zero_allocation(self):
-        self.assertEqual(CURRENT_DISTRIBUTION[1][6], 0)
-        self.assertEqual(OPTIMAL_DISTRIBUTION[1][6], 0)
-
-    def test_route_capacity_is_respected(self):
-        self.assertLessEqual(CURRENT_DISTRIBUTION[4][8], 5)
-        self.assertLessEqual(OPTIMAL_DISTRIBUTION[4][8], 5)
-
-    def test_data_is_marked_as_synthetic(self):
-        from data import DATA_IS_SYNTHETIC
-        self.assertTrue(DATA_IS_SYNTHETIC)
-
-    def test_negative_allocation_is_rejected(self):
-        bad_distribution = [row[:] for row in CURRENT_DISTRIBUTION]
-        bad_distribution[0][0] = -1
-        self.assertTrue(validate_distribution(bad_distribution))
-
-    def test_flask_api_endpoints(self):
-        client = app.test_client()
-        self.assertEqual(client.get("/api/data").status_code, 200)
-        self.assertEqual(client.get("/api/validate").status_code, 200)
-        self.assertEqual(client.get("/api/distribution/current").status_code, 200)
-        self.assertEqual(client.get("/api/cost/current").json["cost"], 2097)
+def test_shapes():
+    ds, _, _ = load_dataset()
+    m, n = len(ds["stations"]), len(ds["areas"])
+    assert (m, n) == (8, 12)
+    assert len(ds["supply"]) == m and len(ds["demand"]) == n
+    assert len(ds["cost_matrix"]) == m and all(len(r) == n for r in ds["cost_matrix"])
+    assert len(ds["current_allocation"]) == m
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_balanced_and_positive():
+    ds, _, _ = load_dataset()
+    assert sum(ds["supply"]) == sum(ds["demand"]) == 78
+    assert all(isinstance(v, int) and v > 0 for v in ds["supply"] + ds["demand"])
+    assert all(isinstance(c, int) and c > 0 for r in ds["cost_matrix"] for c in r)
+
+
+def test_constraints_reference_real_cells():
+    ds, closed, caps = load_dataset()
+    assert closed == [(1, 6)]            # S2 -> A7 closed
+    assert caps == [(4, 8, 5)]           # S5 -> A9 <= 5
+
+
+def test_current_allocation_is_valid_and_respects_constraints():
+    ds, closed, caps = load_dataset()
+    check_plan(ds["current_allocation"], ds["supply"], ds["demand"], closed, caps)
