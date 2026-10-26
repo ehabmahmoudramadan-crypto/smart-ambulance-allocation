@@ -1,12 +1,12 @@
 """Task 14 - dispatcher tests: selection rules, constraints, no double booking."""
 import pytest
 
-from optimization.model import load_dataset, solve
-from simulation.ambulance import Ambulance, IDLE, TO_SCENE
+from algorithms.model import load_dataset, solve
+from simulation.ambulance_agent import Ambulance, IDLE, TO_SCENE
 from simulation.dispatcher import GreedyDispatcher, PlanDispatcher
 from simulation.engine import (Simulation, fleet_from_plan, fleet_greedy,
                                generate_incidents)
-from simulation.incident import Incident
+from simulation.incident_agent import Incident
 
 # 3 stations x 2 areas (minutes)
 COST = [[5, 20],
@@ -24,7 +24,7 @@ def fleet(*stations, designated=None):
             for k, (s, d) in enumerate(zip(stations, designated))]
 
 
-# ----------------------------------------------------------- greedy rule
+#   greedy rule
 def test_greedy_picks_nearest_idle():
     amb, fallback = GreedyDispatcher(COST).select(call(0), fleet(0, 1, 2))
     assert amb.station == 0 and fallback is False
@@ -49,7 +49,7 @@ def test_tie_goes_to_lowest_id():
     assert amb.id == 0
 
 
-# ----------------------------------------------------------- constraints
+#   constraints
 def test_closed_road_is_skipped():
     d = GreedyDispatcher(COST, closed=[(0, 0)])
     amb, _ = d.select(call(0), fleet(0, 1))
@@ -75,7 +75,7 @@ def test_capacity_blocks_then_releases():
     assert third.station == 0                     # capacity is free again
 
 
-# ----------------------------------------------------------- plan rule
+#   plan rule
 def test_plan_prefers_designated_even_if_farther():
     cars = fleet(0, 2, designated=[1, 0])         # car 1 is designated to area 0
     amb, fallback = PlanDispatcher(COST).select(call(0), cars)
@@ -88,7 +88,7 @@ def test_plan_falls_back_to_nearest_idle():
     assert amb.station == 0 and fallback is True
 
 
-# ----------------------------------------------------------- double booking
+#   double booking
 def test_reserving_a_busy_ambulance_twice_raises():
     d = GreedyDispatcher(COST)
     car = fleet(0)[0]
@@ -97,7 +97,7 @@ def test_reserving_a_busy_ambulance_twice_raises():
         d.reserve(car, 1)
 
 
-# ----------------------------------------------------------- full simulation audit
+#   full simulation audit
 @pytest.fixture(scope="module")
 def world():
     ds, closed, caps = load_dataset()

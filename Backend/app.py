@@ -6,7 +6,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request
 
-from optimization.model import load_dataset, plan_cost, solve
+from algorithms.model import load_dataset, plan_cost, solve
 from simulation.engine import replay, run_comparison
 
 FRONTEND = Path(__file__).resolve().parent.parent / "frontend"

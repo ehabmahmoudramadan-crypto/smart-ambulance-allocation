@@ -10,8 +10,8 @@ Constraints (single source of truth - the simulation must import these too):
 import json
 from pathlib import Path
 
-from optimization.vam import vogel_approximation
-from optimization.modi import modi_optimize
+from algorithms.vam import vogel_approximation
+from algorithms.modi import modi_optimize
 
 DEFAULT_DATA = Path(__file__).resolve().parent.parent / "data" / "data.json"
 
