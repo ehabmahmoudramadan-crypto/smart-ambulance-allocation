@@ -10,9 +10,9 @@ import random
 import statistics
 from dataclasses import replace
 
-from simulation.ambulance import Ambulance, IDLE, ON_SCENE, RETURNING, TO_SCENE
+from simulation.ambulance_agent import Ambulance, IDLE, ON_SCENE, RETURNING, TO_SCENE
 from simulation.dispatcher import GreedyDispatcher, PlanDispatcher
-from simulation.incident import Incident
+from simulation.incident_agent import Incident
 
 ARRIVAL, ARRIVE_SCENE, CLEARED, HOME = range(4)
 PRIORITY_MIX = ([1, 2, 3], [0.2, 0.3, 0.5])

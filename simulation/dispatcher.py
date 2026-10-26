@@ -25,7 +25,7 @@ Rules that make every decision explicit and repeatable:
   * ties on distance are broken by ambulance id, so the same seed gives the same result;
   * if no ambulance is allowed, select() returns None and the call keeps waiting.
 """
-from simulation.ambulance import IDLE
+from simulation.ambulance_agent import IDLE
 
 
 class BaseDispatcher:
