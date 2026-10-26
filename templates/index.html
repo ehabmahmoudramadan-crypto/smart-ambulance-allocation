@@ -1,79 +1,72 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Smart Ambulance Allocation System dashboard">
-  <title>Smart Ambulance | Allocation Dashboard</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Ambulance Allocation System</title><link rel="stylesheet" href="style.css"></head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="#home" aria-label="Smart Ambulance home"><span class="brand-mark">🚑</span><span><strong>Smart Ambulance</strong><small>Allocation System</small></span></a>
-    <label class="search-box"><span aria-hidden="true">⌕</span><input id="global-search" type="search" placeholder="Search for a station, area or location..." aria-label="Search stations or areas"></label>
-    <div class="top-actions"><span class="notification" aria-label="Notifications placeholder">♧<i>3</i></span><span class="top-divider"></span><span class="avatar">●</span><span class="profile"><b>Team Member</b><small>Project</small></span><span class="chevron">⌄</span></div>
-  </header>
-  <aside class="sidebar" aria-label="Main navigation">
-    <nav class="nav-list">
-      <a class="nav-link active" href="#home"><span>⌂</span>Home</a>
-      <a class="nav-link" href="#data-input"><span>▤</span>Data Input</a>
-      <a class="nav-link" href="#results"><span>▦</span>Results</a>
-      <a class="nav-link" href="#simulation"><span>◉</span>Simulation</a>
-      <a class="nav-link" href="#reports"><span>▤</span>Reports</a>
-      <a class="nav-link" href="#settings"><span>⚙</span>Settings</a>
-    </nav>
-    <div class="sidebar-bottom"><div class="sidebar-ambulance" aria-hidden="true">🚑</div><strong>Faster Response<br>Safer Communities</strong><p>Optimizing ambulance allocation for a better tomorrow.</p></div>
-  </aside>
-  <main id="home" class="main-content">
-    <div class="dashboard-grid">
-      <section class="hero card" aria-labelledby="hero-heading">
-        <div class="hero-image" role="img" aria-label="Ambulance illustration"><span>🚑</span></div>
-        <div class="hero-copy"><h1 id="hero-heading">Smart Ambulance<br>Allocation System</h1><p class="hero-tagline">Better Allocation <span>·</span> Faster Response <span>·</span> Safer Lives</p><p>Our system uses optimization algorithms to allocate ambulances efficiently across stations and service areas, minimizing estimated allocation cost.</p></div>
-      </section>
-      <section class="stats-grid" aria-label="System overview">
-        <article class="stat card"><span class="stat-icon blue">🚑</span><div><h2>Total Ambulances</h2><strong id="total-ambulances">78</strong><small><span class="dot green"></span> Total fleet: 78</small></div></article>
-        <article class="stat card"><span class="stat-icon purple">●</span><div><h2>Service Areas</h2><strong id="total-areas">12</strong><small><span class="dot violet"></span> Demand points</small></div></article>
-        <article class="stat card"><span class="stat-icon orange">⌂</span><div><h2>Stations</h2><strong id="total-stations">8</strong><small><span class="dot amber"></span> Supply points</small></div></article>
-        <article class="stat card"><span class="stat-icon mint">◷</span><div><h2>Avg. Response Time</h2><strong id="average-response-time">—</strong><small>Awaiting simulation</small></div></article>
-      </section>
-      <section id="data-input" class="input-panel card" aria-labelledby="input-heading"><div class="section-title"><span class="heading-icon">♟</span><h2 id="input-heading">Input Data</h2></div>
-        <div class="segmented"><button type="button" class="selected" id="manual-input-btn">Manual Input</button><button type="button" id="load-sample-btn">Load Sample</button></div>
-        <div class="field-group"><h3>Supply <span>(Stations)</span></h3><div class="table-scroll"><table class="data-table editable" id="supply-table"><thead><tr><th>S1</th><th>S2</th><th>S3</th><th>S4</th><th>S5</th><th>S6</th><th>S7</th><th>S8</th></tr></thead><tbody><tr><td><input aria-label="Supply S1" type="number" min="0" value="10"></td><td><input aria-label="Supply S2" type="number" min="0" value="10"></td><td><input aria-label="Supply S3" type="number" min="0" value="10"></td><td><input aria-label="Supply S4" type="number" min="0" value="10"></td><td><input aria-label="Supply S5" type="number" min="0" value="9"></td><td><input aria-label="Supply S6" type="number" min="0" value="10"></td><td><input aria-label="Supply S7" type="number" min="0" value="9"></td><td><input aria-label="Supply S8" type="number" min="0" value="10"></td></tr></tbody></table></div></div>
-        <div class="field-group"><h3>Demand <span>(Areas)</span></h3><div class="table-scroll"><table class="data-table editable" id="demand-table"><thead><tr><th>A1</th><th>A2</th><th>A3</th><th>A4</th><th>A5</th><th>A6</th><th>A7</th><th>A8</th><th>A9</th><th>A10</th><th>A11</th><th>A12</th></tr></thead><tbody><tr><td><input aria-label="Demand A1" type="number" min="0" value="4"></td><td><input aria-label="Demand A2" type="number" min="0" value="6"></td><td><input aria-label="Demand A3" type="number" min="0" value="7"></td><td><input aria-label="Demand A4" type="number" min="0" value="4"></td><td><input aria-label="Demand A5" type="number" min="0" value="7"></td><td><input aria-label="Demand A6" type="number" min="0" value="8"></td><td><input aria-label="Demand A7" type="number" min="0" value="7"></td><td><input aria-label="Demand A8" type="number" min="0" value="5"></td><td><input aria-label="Demand A9" type="number" min="0" value="12"></td><td><input aria-label="Demand A10" type="number" min="0" value="6"></td><td><input aria-label="Demand A11" type="number" min="0" value="8"></td><td><input aria-label="Demand A12" type="number" min="0" value="4"></td></tr></tbody></table></div></div>
-        <div class="field-group"><h3>Cost Matrix <span>(Travel Time in Minutes)</span></h3><div class="table-scroll"><table class="data-table cost-table" id="cost-matrix-table"><thead><tr><th>Station</th><th>A1</th><th>A2</th><th>A3</th><th>A4</th><th>A5</th><th>A6</th><th>A7</th><th>A8</th><th>A9</th><th>A10</th><th>A11</th><th>A12</th></tr></thead><tbody>
-        <tr><th>S1</th><td>17</td><td>24</td><td>31</td><td>15</td><td>47</td><td>43</td><td>32</td><td>14</td><td>11</td><td>42</td><td>33</td><td>31</td></tr>
-        <tr><th>S2</th><td>24</td><td>6</td><td>15</td><td>33</td><td>24</td><td>16</td><td class="closed-cell" title="Closed route S2 to A7">✕</td><td>20</td><td>26</td><td>20</td><td>43</td><td>28</td></tr>
-        <tr><th>S3</th><td>31</td><td>34</td><td>40</td><td>8</td><td>56</td><td>53</td><td>26</td><td>25</td><td>17</td><td>47</td><td>28</td><td>31</td></tr>
-        <tr><th>S4</th><td>31</td><td>17</td><td>10</td><td>28</td><td>28</td><td>25</td><td>25</td><td>13</td><td>19</td><td>18</td><td>28</td><td>13</td></tr>
-        <tr><th>S5</th><td>37</td><td>25</td><td>9</td><td>33</td><td>23</td><td>26</td><td>30</td><td>24</td><td class="limited-cell" title="Maximum 5 ambulances">1*</td><td>13</td><td>29</td><td>14</td></tr>
-        <tr><th>S6</th><td>30</td><td>17</td><td>9</td><td>38</td><td>17</td><td>17</td><td>40</td><td>25</td><td>28</td><td>8</td><td>38</td><td>22</td></tr>
-        <tr><th>S7</th><td>33</td><td>22</td><td>8</td><td>33</td><td>20</td><td>20</td><td>30</td><td>24</td><td>23</td><td>12</td><td>29</td><td>14</td></tr>
-        <tr><th>S8</th><td>15</td><td>19</td><td>25</td><td>21</td><td>39</td><td>34</td><td>32</td><td>9</td><td>13</td><td>33</td><td>36</td><td>26</td></tr>
-        </tbody></table></div><p class="matrix-legend"><span class="legend-pill closed-cell">✕</span> Closed: S2 → A7 <span class="legend-pill limited-cell">1*</span> S5 → A9: max 5 ambulances</p></div>
-        <button class="primary-btn" type="button" id="run-optimization-btn">▶ &nbsp; Run Optimization</button><p class="helper-text" id="input-feedback" role="status">Optimization button will be connected by the JavaScript teammate.</p>
-      </section>
-      <section id="results" class="results-panel card" aria-labelledby="results-heading"><h2 id="results-heading" class="sr-only">Optimization Results</h2><div class="result-tabs"><span class="result-tab active">VAM (Initial Solution)</span><span class="result-tab">MODI (Optimal Solution)</span></div><div class="cost-cards"><div class="cost-box initial"><h3>Initial Cost (VAM)</h3><strong id="vam-cost">1257</strong><small>minutes × ambulances</small></div><div class="cost-box optimal"><h3>Optimal Cost (MODI)</h3><strong id="modi-cost">1111</strong><small>minutes × ambulances <em>11.6% lower than VAM</em></small></div></div>
-        <div class="subheading"><h3>Allocation Matrix</h3><span>MODI reference solution</span></div><div class="table-scroll"><table class="data-table allocation-table" id="allocation-matrix-table"><thead><tr><th>Station / Area</th><th>A1</th><th>A2</th><th>A3</th><th>A4</th><th>A5</th><th>A6</th><th>A7</th><th>A8</th><th>A9</th><th>A10</th><th>A11</th><th>A12</th><th>Supply</th></tr></thead><tbody>
-        <tr><th>S1</th><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td><td class="allocated">7</td><td>–</td><td class="allocated">3</td><td>–</td><th>10</th></tr>
-        <tr><th>S2</th><td>–</td><td class="allocated">6</td><td>–</td><td>–</td><td>–</td><td class="allocated">4</td><td class="closed-cell">✕</td><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td><th>10</th></tr>
-        <tr><th>S3</th><td>–</td><td>–</td><td>–</td><td class="allocated">4</td><td>–</td><td>–</td><td class="allocated">1</td><td>–</td><td>–</td><td>–</td><td class="allocated">5</td><td>–</td><th>10</th></tr>
-        <tr><th>S4</th><td>–</td><td>–</td><td class="allocated">1</td><td>–</td><td>–</td><td>–</td><td class="allocated">5</td><td>–</td><td>–</td><td>–</td><td>–</td><td class="allocated">4</td><th>10</th></tr>
-        <tr><th>S5</th><td>–</td><td>–</td><td class="allocated">4</td><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td><td class="limited-cell">5</td><td>–</td><td>–</td><td>–</td><th>9</th></tr>
-        <tr><th>S6</th><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td><td class="allocated">4</td><td>–</td><td>–</td><td>–</td><td class="allocated">6</td><td>–</td><td>–</td><th>10</th></tr>
-        <tr><th>S7</th><td>–</td><td>–</td><td class="allocated">2</td><td>–</td><td class="allocated">7</td><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td><th>9</th></tr>
-        <tr><th>S8</th><td class="allocated">4</td><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td><td class="allocated">1</td><td class="allocated">5</td><td>–</td><td>–</td><td>–</td><td>–</td><th>10</th></tr>
-        <tr class="demand-row"><th>Demand</th><th>4</th><th>6</th><th>7</th><th>4</th><th>7</th><th>8</th><th>7</th><th>5</th><th>12</th><th>6</th><th>8</th><th>4</th><th>78</th></tr>
-        </tbody></table></div>
-        <div class="insights"><h3>✧ &nbsp; Key Insights</h3><p><span>✓</span> Total supply equals total demand (78 = 78)</p><p><span>✓</span> Reference allocation satisfies all station and area totals</p><p><span>✓</span> All allocations are non-negative integers</p><p class="warning"><span>!</span> Constraints: S2 → A7 closed; S5 → A9 maximum 5</p></div>
-      </section>
-      <div class="right-column"><section class="map-panel card" aria-labelledby="map-heading"><div class="section-title map-heading"><span class="heading-icon">♧</span><h2 id="map-heading">Allocation Map</h2><div class="map-legend"><span><i class="dot blue-dot"></i>Station</span><span><i class="dot red-dot"></i>Area</span><span><i class="dot green"></i>Ambulance</span></div></div><div id="allocation-map" class="map-placeholder" role="img" aria-label="Schematic placeholder for future map integration"><div class="map-grid"></div><span class="map-route route-one"></span><span class="map-route route-two"></span><span class="map-route route-three"></span><span class="map-pin station-pin p1">S1</span><span class="map-pin station-pin p2">S2</span><span class="map-pin station-pin p3">S3</span><span class="map-pin station-pin p4">S4</span><span class="map-pin area-pin a1">A1</span><span class="map-pin area-pin a2">A2</span><span class="map-pin area-pin a3">A3</span><span class="map-pin area-pin a4">A4</span><span class="map-pin area-pin a5">A5</span><span class="map-caption">Illustrative map placeholder · not real GPS locations</span></div></section>
-      <section id="simulation" class="simulation-panel card" aria-labelledby="simulation-heading"><div class="section-title"><span class="heading-icon play-icon">▶</span><h2 id="simulation-heading">Simulation</h2><span class="status-label"><i class="dot amber"></i> Awaiting integration</span></div><label class="speed-label" for="simulation-speed">Simulation Speed</label><div class="speed-row"><input type="range" id="simulation-speed" min="1" max="5" value="1"><span id="simulation-speed-value">1x</span></div><div class="simulation-actions"><button type="button" class="start-btn" id="simulation-start">▶ &nbsp; Start</button><button type="button" id="simulation-pause">Ⅱ &nbsp; Pause</button><button type="button" id="simulation-reset">↻ &nbsp; Reset</button></div><div class="event-log"><h3><i class="dot red-dot"></i> Live Events</h3><div id="simulation-events" class="events-placeholder">Simulation events will appear here when the engine is connected.</div></div></section></div>
-      <section id="reports" class="footer-panels" aria-label="Reports and performance"><article class="card footer-card"><div class="section-title"><span class="heading-icon">⚙</span><h2>Algorithm Details</h2></div><div class="detail-row"><b>VAM</b><span>Vogel's Approximation Method<br><small>Initial reference cost: 1257</small></span></div><div class="detail-row"><b>MODI</b><span>Modified Distribution Method<br><small>Optimal reference cost: 1111</small></span></div></article><article class="card footer-card"><div class="section-title"><span class="heading-icon">▥</span><h2>Performance Metrics</h2></div><div class="metric"><span>Current Allocation Cost</span><b>2097</b></div><div class="metric"><span>VAM Initial Cost</span><b>1257</b></div><div class="metric"><span>MODI Optimal Cost</span><b>1111</b></div><div class="metric"><span>Overall Cost Reduction</span><b class="positive">47.0%</b></div></article><article id="settings" class="card footer-card"><div class="section-title"><span class="heading-icon">⬡</span><h2>System Status</h2></div><p class="status-note"><span class="dot amber"></span> Frontend preview · backend integration pending</p><div class="status-list"><span>✓ HTML structure</span><span>✓ Responsive CSS</span><span>○ JavaScript connection</span><span>○ Simulation engine</span></div></article><article class="card quote-card"><p>“Smarter allocation today, healthier communities tomorrow.”</p><span class="heartbeat">⌁</span></article></section>
-    </div><footer class="page-footer">Synthetic project dataset · Optimization costs are ambulance-minutes, not measured incident response times.</footer>
-  </main>
-  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-</body>
-</html>
+<aside class="side">
+  <div class="brand"><span class="logo">&#10010;</span><div><b>Smart Ambulance</b><small>Allocation System</small></div></div>
+  <nav>
+    <a href="#home" class="on">&#8962; Home</a><a href="#data">&#9638; Data Input</a><a href="#results">&#9636; Results</a>
+    <a href="#sim">&#9654; Simulation</a><a href="#reports">&#9783; Reports</a>
+  </nav>
+  <div class="tag"><b>Faster Response<br>Safer Communities</b><small>Optimizing ambulance allocation for a better tomorrow.</small></div>
+</aside>
+<div class="main">
+  <header class="top"><h1>Smart Ambulance Allocation System</h1>
+    <div class="pill"><i></i><span id="status">Connecting&hellip;</span></div>
+    <button id="run" class="btn" type="button">Run Optimization</button></header>
+  <div id="error" class="error" role="alert" hidden></div>
+
+  <div id="p-home" class="page on pg-home">
+    <section class="hero card">
+      <div class="intro"><h2>Smart Ambulance<br>Allocation System</h2><p class="slogan">Better Allocation &middot; Faster Response &middot; Safer Lives</p>
+        <p>Transportation-model optimization (VAM + MODI) with road-closure and route-capacity constraints, validated by a discrete-event simulation.</p></div>
+      <div class="kpis">
+        <div class="kpi"><span class="ic b">&#128657;</span><div><small>Total Ambulances</small><b id="k-amb">&ndash;</b></div></div>
+        <div class="kpi"><span class="ic p">&#9906;</span><div><small>Service Areas</small><b id="k-areas">&ndash;</b></div></div>
+        <div class="kpi"><span class="ic o">&#8962;</span><div><small>Stations</small><b id="k-st">&ndash;</b></div></div>
+        <div class="kpi"><span class="ic g">&#9719;</span><div><small>Avg. Response Time</small><b id="k-resp">&ndash;</b><em id="k-resp-n"></em></div></div>
+      </div></section>
+    <div class="cols2">
+      <section class="card"><h3>Algorithm Details</h3>
+        <div class="alg"><b>VAM</b><span>Vogel&rsquo;s Approximation Method<br><small id="a-vam"></small></span></div>
+        <div class="alg"><b>MODI</b><span>Modified Distribution Method<br><small id="a-modi"></small></span></div></section>
+      <section class="card"><h3>System Status</h3><ul id="sys" class="sys"></ul></section>
+    </div>
+  </div>
+
+  <div id="p-data" class="page"><h2 class="ptitle">Data Input</h2>
+    <section class="card">
+      <h4>Supply <small>(ambulances per station)</small></h4><div id="t-supply" class="chips"></div>
+      <h4>Demand <small>(ambulances needed per area)</small></h4><div id="t-demand" class="chips"></div>
+      <h4>Cost Matrix <small>(travel time, minutes &middot; red = closed road, amber = capacity-limited route)</small></h4>
+      <div class="scroll"><table id="t-cost" class="tbl"></table></div>
+    </section></div>
+
+  <div id="p-results" class="page"><h2 class="ptitle">Results</h2>
+    <div class="pg-results">
+      <section class="card"><div class="tabs" id="tabs">
+          <button class="on" data-v="optimal">MODI (Optimal)</button><button data-v="initial">VAM (Initial)</button><button data-v="current">Current</button></div>
+        <div class="costs"><div class="cb b"><small>Initial Cost (VAM)</small><b id="c-vam">&ndash;</b><span>minutes &times; ambulances</span></div>
+          <div class="cb g"><small>Optimal Cost (MODI)</small><b id="c-modi">&ndash;</b><span id="c-note"></span></div></div>
+        <h4>Allocation Matrix</h4><div class="scroll"><table id="t-plan" class="tbl"></table></div>
+        <h4>Key Insights</h4><ul id="insights" class="ins"></ul></section>
+      <section class="card"><h3>Allocation Map <small>synthetic city grid</small></h3><svg id="map" viewBox="-3 -3 36 36" role="img" aria-label="Allocation map"></svg>
+        <div class="legend"><span><i class="s"></i>Station</span><span><i class="a"></i>Area</span><span><i class="x"></i>Closed</span><span><i class="c"></i>Capped</span></div></section>
+    </div></div>
+
+  <div id="p-sim" class="page"><h2 class="ptitle">Simulation</h2>
+    <div class="pg-sim">
+      <section class="card"><h3>Live Map <small>ambulances in motion</small></h3><svg id="map-sim" viewBox="-3 -3 36 36" role="img" aria-label="Simulation map"></svg>
+        <div class="legend"><span><i class="s"></i>Station</span><span><i class="a"></i>Area</span><span><i class="m"></i>Ambulance</span><span><i class="x"></i>Closed</span><span><i class="c"></i>Capped</span></div></section>
+      <section class="card"><div class="row"><h3>Controls</h3><span class="ready" id="sim-state">Loading&hellip;</span></div>
+        <div class="ctl"><label>Strategy <select id="sim-strat"><option value="plan">Plan (MODI)</option><option value="greedy">Nearest idle</option></select></label>
+          <label>Speed <input id="sim-speed" type="range" min="1" max="10" value="3"><output id="sim-x">3x</output></label><b id="clock">00:00</b></div>
+        <div class="btns"><button id="b-start" class="go" type="button">&#9654; Start</button><button id="b-pause" type="button">&#10074;&#10074; Pause</button><button id="b-reset" type="button">&#8635; Reset</button></div>
+        <h5>Live Events</h5><ul id="events" class="ev"></ul></section>
+    </div></div>
+
+  <div id="p-reports" class="page"><h2 class="ptitle">Reports</h2>
+    <section class="card"><h3>Performance Metrics <small>simulation, 10 days, same calls for both strategies</small></h3>
+      <table id="t-perf" class="perf"></table><p id="verdict" class="verdict"></p></section></div>
+</div>
+<script src="script.js"></script></body></html>
