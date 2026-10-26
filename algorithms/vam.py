@@ -1,161 +1,49 @@
-def _validate_inputs(supply, demand, cost_matrix,
-                     closed_routes, route_capacities):
-    """Validate transportation problem inputs."""
+"""Vogel's Approximation Method (VAM) - initial basic feasible solution.
 
-    if not supply or not demand:
-        raise ValueError("Supply and demand must not be empty.")
-
-    if len(cost_matrix) != len(supply):
-        raise ValueError("Cost matrix rows must match supply.")
-
-    if any(len(row) != len(demand) for row in cost_matrix):
-        raise ValueError("Cost matrix columns must match demand.")
-
-    for name, values in (("supply", supply), ("demand", demand)):
-        for value in values:
-            if (isinstance(value, bool)
-                    or not isinstance(value, int)
-                    or value < 0):
-                raise ValueError(
-                    f"{name} values must be non-negative integers."
-                )
-
-    for row in cost_matrix:
-        for cost in row:
-            if (isinstance(cost, bool)
-                    or not isinstance(cost, (int, float))
-                    or cost < 0):
-                raise ValueError(
-                    "Costs must be non-negative numbers."
-                )
-
-    if sum(supply) != sum(demand):
-        raise ValueError("Total supply must equal total demand.")
-
-    for route in closed_routes:
-        if (not isinstance(route, (tuple, list))
-                or len(route) != 2):
-            raise ValueError("Each closed route must be (row, col).")
-
-        i, j = route
-        if (not isinstance(i, int) or isinstance(i, bool)
-                or not isinstance(j, int) or isinstance(j, bool)
-                or not (0 <= i < len(supply))
-                or not (0 <= j < len(demand))):
-            raise ValueError("Closed route index out of range.")
-
-    for route, cap in route_capacities.items():
-        if (not isinstance(route, (tuple, list))
-                or len(route) != 2):
-            raise ValueError("Each capacity route must be (row, col).")
-
-        i, j = route
-        if (not isinstance(i, int) or isinstance(i, bool)
-                or not isinstance(j, int) or isinstance(j, bool)
-                or not (0 <= i < len(supply))
-                or not (0 <= j < len(demand))):
-            raise ValueError("Capacity route index out of range.")
-
-        if (isinstance(cap, bool)
-                or not isinstance(cap, int)
-                or cap < 0):
-            raise ValueError(
-                "Route capacities must be non-negative integers."
-            )
+Works on a balanced transportation problem. Big-M costs are treated like any
+other cost (the large penalty naturally makes VAM avoid those cells); the
+reported cost is always computed from the real cost matrix.
+"""
 
 
-def _build_route_limits(supply, demand, closed_routes,
-                        route_capacities):
-    """Build route limits; None means unlimited."""
-
-    limits = [
-        [None for _ in demand]
-        for _ in supply
-    ]
-
-    for (i, j), cap in route_capacities.items():
-        limits[i][j] = cap
-
-    for i, j in closed_routes:
-        limits[i][j] = 0
-
-    return limits
-
-
-def vogel_approximation(supply, demand, cost_matrix,
-                        closed_routes=None, route_capacities=None):
-    closed_routes = closed_routes or []
-    route_capacities = route_capacities or {}
-    _validate_inputs(supply, demand, cost_matrix,
-                     closed_routes, route_capacities)
-    limits = _build_route_limits(supply, demand, closed_routes,
-                                 route_capacities)
-
+def vogel_approximation(supply, demand, cost):
     m, n = len(supply), len(demand)
-    supply_left = list(supply)
-    demand_left = list(demand)
-    allocation = [[0] * n for _ in range(m)]
-    active_rows = {i for i, value in enumerate(supply_left) if value > 0}
-    active_cols = {j for j, value in enumerate(demand_left) if value > 0}
+    if sum(supply) != sum(demand):
+        raise ValueError("Problem must be balanced (sum(supply) == sum(demand)).")
+
+    s, d = list(supply), list(demand)
+    x = [[0] * n for _ in range(m)]
+    rows, cols = set(range(m)), set(range(n))
     steps = []
 
-    def room(i, j):
-        quantity = min(supply_left[i], demand_left[j])
-        if limits[i][j] is None:
-            return quantity
-        return min(quantity, limits[i][j] - allocation[i][j])
-
     def penalty(costs):
-        ordered = sorted(costs)
-        if len(ordered) == 1:
-            return float("inf")
-        return ordered[1] - ordered[0]
+        c = sorted(costs)
+        return (c[1] - c[0]) if len(c) > 1 else c[0]
 
-    while active_rows and active_cols:
-        candidates = []
-        for i in sorted(active_rows):
-            open_cols = [j for j in active_cols if room(i, j) > 0]
-            if not open_cols:
-                return None, None, steps
-            cheapest = min(open_cols, key=lambda j: (cost_matrix[i][j], j))
-            candidates.append((
-                penalty([cost_matrix[i][j] for j in open_cols]),
-                -cost_matrix[i][cheapest], 1, -i, i, cheapest,
-            ))
-        for j in sorted(active_cols):
-            open_rows = [i for i in active_rows if room(i, j) > 0]
-            if not open_rows:
-                return None, None, steps
-            cheapest = min(open_rows, key=lambda i: (cost_matrix[i][j], i))
-            candidates.append((
-                penalty([cost_matrix[i][j] for i in open_rows]),
-                -cost_matrix[cheapest][j], 0, -j, cheapest, j,
-            ))
+    while rows and cols:
+        row_pen = {i: penalty([cost[i][j] for j in cols]) for i in rows}
+        col_pen = {j: penalty([cost[i][j] for i in rows]) for j in cols}
+        best_r = max(row_pen.items(), key=lambda kv: (kv[1], -kv[0]))
+        best_c = max(col_pen.items(), key=lambda kv: (kv[1], -kv[0]))
 
-        _, _, _, _, i, j = max(candidates)
-        quantity = room(i, j)
-        allocation[i][j] += quantity
-        supply_left[i] -= quantity
-        demand_left[j] -= quantity
-        steps.append({
-            "row": i,
-            "column": j,
-            "quantity": quantity,
-            "unit_cost": cost_matrix[i][j],
-        })
-        if supply_left[i] == 0:
-            active_rows.discard(i)
-        if demand_left[j] == 0:
-            active_cols.discard(j)
+        if best_r[1] >= best_c[1]:
+            i = best_r[0]
+            j = min(cols, key=lambda j: (cost[i][j], j))
+        else:
+            j = best_c[0]
+            i = min(rows, key=lambda i: (cost[i][j], i))
 
-    total_cost = sum(allocation[i][j] * cost_matrix[i][j]
-                     for i in range(m) for j in range(n))
-    return allocation, total_cost, steps
+        q = min(s[i], d[j])
+        x[i][j] += q
+        s[i] -= q
+        d[j] -= q
+        steps.append({"cell": (i, j), "qty": q})
 
+        # remove exactly one line per step so degenerate cases keep going
+        if s[i] == 0 and (d[j] > 0 or len(rows) > 1):
+            rows.discard(i)
+        else:
+            cols.discard(j)
 
-def solve_vam(supply, demand, cost_matrix,
-              closed_routes=None, route_capacities=None):
-    allocation, total_cost, _ = vogel_approximation(
-        supply, demand, cost_matrix, closed_routes, route_capacities
-    )
-    return allocation, total_cost
+    total = sum(x[i][j] * cost[i][j] for i in range(m) for j in range(n))
+    return {"allocation": x, "total_cost": total, "steps": steps}
